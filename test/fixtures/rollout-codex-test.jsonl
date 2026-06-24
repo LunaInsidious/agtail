@@ -1,0 +1,12 @@
+{"timestamp":"2026-06-24T05:43:22.882Z","type":"session_meta","payload":{"session_id":"test-codex-1","id":"test-codex-1","timestamp":"2026-06-24T05:43:05.470Z","cwd":"/Users/itsuki_t/proj","originator":"codex-tui","cli_version":"0.142.0","source":"cli","model_provider":"openai"}}
+{"timestamp":"2026-06-24T05:43:22.888Z","type":"turn_context","payload":{"turn_id":"t1","cwd":"/Users/itsuki_t/proj","model":"gpt-5.5","approval_policy":"on-request"}}
+{"timestamp":"2026-06-24T05:43:22.890Z","type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"<system prompt noise that should NOT appear>"}]}}
+{"timestamp":"2026-06-24T05:43:22.892Z","type":"event_msg","payload":{"type":"user_message","message":"run the build for blogsync","images":[]}}
+{"timestamp":"2026-06-24T05:43:23.100Z","type":"event_msg","payload":{"type":"agent_reasoning","text":"I should run npm build."}}
+{"timestamp":"2026-06-24T05:43:23.150Z","type":"event_msg","payload":{"type":"agent_reasoning_delta","delta":"npm"}}
+{"timestamp":"2026-06-24T05:43:23.200Z","type":"response_item","payload":{"type":"reasoning","id":"rs_1","summary":[],"encrypted_content":"ENCRYPTEDNOISE"}}
+{"timestamp":"2026-06-24T05:43:23.300Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\"cmd\":\"npm run build\",\"workdir\":\"/Users/itsuki_t/proj\"}","call_id":"c1"}}
+{"timestamp":"2026-06-24T05:43:25.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"c1","output":"Process exited with code 0\nOutput:\nbuild ok\n"}}
+{"timestamp":"2026-06-24T05:43:26.000Z","type":"event_msg","payload":{"type":"agent_message","message":"Build finished successfully.","phase":"final_answer"}}
+{"timestamp":"2026-06-24T05:43:27.004Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":200,"output_tokens":50,"total_tokens":1050},"last_token_usage":{"input_tokens":1000,"cached_input_tokens":200,"output_tokens":50,"total_tokens":1050}}}}
+{"timestamp":"2026-06-24T05:43:27.500Z","type":"event_msg","payload":{"type":"some_future_event","detail":"unrecognized"}}

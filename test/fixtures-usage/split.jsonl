@@ -1,0 +1,4 @@
+{"type":"user","uuid":"u1","timestamp":"2026-06-24T04:00:00.000Z","message":{"role":"user","content":"go"}}
+{"type":"assistant","uuid":"a1","timestamp":"2026-06-24T04:00:01.000Z","message":{"id":"m1","role":"assistant","model":"claude-opus-4-8","usage":{"input_tokens":100,"output_tokens":10,"cache_read_input_tokens":50},"content":[{"type":"thinking","thinking":"hmm"}]}}
+{"type":"assistant","uuid":"a2","timestamp":"2026-06-24T04:00:02.000Z","message":{"id":"m1","role":"assistant","model":"claude-opus-4-8","usage":{"input_tokens":100,"output_tokens":10,"cache_read_input_tokens":50},"content":[{"type":"text","text":"doing it"}]}}
+{"type":"assistant","uuid":"a3","timestamp":"2026-06-24T04:00:03.000Z","message":{"id":"m1","role":"assistant","model":"claude-opus-4-8","usage":{"input_tokens":100,"output_tokens":10,"cache_read_input_tokens":50},"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"ls"}}]}}

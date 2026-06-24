@@ -1,0 +1,5 @@
+{"type":"summary","summary":"Build a transcript viewer","timestamp":"2026-06-24T04:00:00.000Z"}
+{"type":"user","uuid":"u1","timestamp":"2026-06-24T04:52:32.098Z","cwd":"/Users/itsuki_t/proj","gitBranch":"main","version":"2.1.175","message":{"role":"user","content":"please grep for blogsync"}}
+{"type":"assistant","uuid":"a1","timestamp":"2026-06-24T04:52:51.267Z","cwd":"/Users/itsuki_t/proj","version":"2.1.175","message":{"model":"claude-opus-4-8","role":"assistant","usage":{"input_tokens":2000,"output_tokens":300,"cache_read_input_tokens":1500,"cache_creation_input_tokens":100},"content":[{"type":"thinking","thinking":"Let me search the codebase."},{"type":"text","text":"I'll run ripgrep."},{"type":"tool_use","id":"tu1","name":"Bash","input":{"command":"rg blogsync","description":"search"}}]}}
+{"type":"user","uuid":"u2","timestamp":"2026-06-24T04:52:55.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu1","is_error":false,"content":"src/sync.ts: blogsync entry"}]}}
+{"type":"attachment","uuid":"x1","timestamp":"2026-06-24T04:52:56.000Z","attachment":{"type":"skill_listing","content":"..."}}
