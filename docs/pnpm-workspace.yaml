@@ -1,0 +1,3 @@
+# Own pnpm root so the docs site is isolated from the app's dependencies.
+allowBuilds:
+  esbuild: true

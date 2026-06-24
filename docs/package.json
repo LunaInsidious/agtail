@@ -1,0 +1,14 @@
+{
+  "name": "agtail-docs",
+  "private": true,
+  "type": "module",
+  "description": "Documentation site for agtail (managed independently of the app).",
+  "scripts": {
+    "dev": "vitepress dev",
+    "build": "vitepress build",
+    "preview": "vitepress preview"
+  },
+  "devDependencies": {
+    "vitepress": "^1.5.0"
+  }
+}
