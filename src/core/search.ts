@@ -1,0 +1,132 @@
+import type { Agent, Event, EventKind, Match, Session } from "./types.js";
+import type { RootOverrides } from "./adapters/types.js";
+import { findAllSessions, selectAdapters } from "./adapters/index.js";
+import { toolSearchText } from "./format.js";
+import { mask } from "./mask.js";
+
+export interface SearchFilters {
+  /** Text to match. Empty => match any event (filter-only search). */
+  pattern?: string;
+  /** Treat pattern as a regular expression (else literal substring). */
+  regex?: boolean;
+  /** Case-insensitive (default true). */
+  ignoreCase?: boolean;
+  agents?: Agent[];
+  /** Tool name globs, e.g. "Bash", "Write", "mcp__*". Restricts to tool_use. */
+  tools?: string[];
+  /** Substring match against session cwd. */
+  cwd?: string;
+  /** ISO/date lower & upper bounds on event timestamp (inclusive). */
+  since?: string;
+  until?: string;
+  /** Restrict to these event kinds. */
+  kinds?: EventKind[];
+  mask?: boolean;
+  /** Stop after this many matches (0/undefined = no limit). */
+  limit?: number;
+  overrides?: RootOverrides;
+}
+
+function globToRegExp(glob: string): RegExp {
+  const escaped = glob.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+  return new RegExp(`^${escaped}$`, "i");
+}
+
+function compilePattern(f: SearchFilters): RegExp | null {
+  if (!f.pattern) return null;
+  const flags = f.ignoreCase === false ? "g" : "gi";
+  const src = f.regex ? f.pattern : f.pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(src, flags);
+}
+
+/** Text that should be searched for a given event. */
+function searchableText(e: Event): string {
+  const parts: string[] = [];
+  if (e.text) parts.push(e.text);
+  if (e.kind === "tool_use") parts.push(toolSearchText(e.tool, e.input));
+  if (e.result?.text) parts.push(e.result.text);
+  return parts.join("\n");
+}
+
+function snippet(text: string, re: RegExp | null, doMask: boolean): string {
+  let idx = 0;
+  if (re) {
+    re.lastIndex = 0;
+    const m = re.exec(text);
+    if (m) idx = m.index;
+  }
+  const start = Math.max(0, idx - 60);
+  let s = text.slice(start, idx + 120).replace(/\s+/g, " ").trim();
+  if (start > 0) s = "…" + s;
+  return doMask ? mask(s, true) : s;
+}
+
+function inRange(ts: string | undefined, since?: string, until?: string): boolean {
+  if (!since && !until) return true;
+  if (!ts) return true; // undated events aren't excluded by a date window
+  if (since && ts < since) return false;
+  if (until && ts > until) return false;
+  return true;
+}
+
+/** Stream matches across the selected agents' sessions. */
+export async function* searchSessions(f: SearchFilters): AsyncGenerator<Match> {
+  const re = compilePattern(f);
+  // Empty arrays mean "no filter" (an empty [] is truthy — guard explicitly).
+  const toolRes = f.tools && f.tools.length ? f.tools.map(globToRegExp) : null;
+  const kinds = f.kinds && f.kinds.length ? new Set(f.kinds) : null;
+  const cwdNeedle = f.cwd?.toLowerCase();
+  const doMask = Boolean(f.mask);
+  // A date-only `until` should include the whole day, not stop at 00:00:00.
+  const until = f.until && /^\d{4}-\d{2}-\d{2}$/.test(f.until) ? f.until + "T23:59:59.999Z" : f.until;
+  let count = 0;
+
+  const adapters = selectAdapters(f.agents, f.overrides);
+  for (const adapter of adapters) {
+    const metas = (await adapter.findSessions()).sort((a, b) => b.mtime - a.mtime);
+    for (const meta of metas) {
+      if (cwdNeedle && !(meta.cwd ?? "").toLowerCase().includes(cwdNeedle)) continue;
+      let session: Session;
+      try {
+        session = await adapter.readSession(meta.path);
+      } catch {
+        continue;
+      }
+      for (const e of session.events) {
+        if (toolRes) {
+          if (e.kind !== "tool_use" || !e.tool) continue;
+          if (!toolRes.some((r) => r.test(e.tool!))) continue;
+        }
+        if (kinds && !kinds.has(e.kind)) continue;
+        if (!inRange(e.ts, f.since, until)) continue;
+        const hay = searchableText(e);
+        if (re) {
+          re.lastIndex = 0;
+          if (!re.test(hay)) continue;
+        } else if (!hay && e.kind !== "tool_use") {
+          continue;
+        }
+        yield {
+          agent: session.agent,
+          sessionId: session.id,
+          path: session.path,
+          ts: e.ts,
+          kind: e.kind,
+          tool: e.tool,
+          cwd: session.cwd,
+          snippet: snippet(hay || (e.tool ?? ""), re, doMask),
+        };
+        if (f.limit && ++count >= f.limit) return;
+      }
+    }
+  }
+}
+
+/** Collect all matches into an array. */
+export async function search(f: SearchFilters): Promise<Match[]> {
+  const out: Match[] = [];
+  for await (const m of searchSessions(f)) out.push(m);
+  return out;
+}
+
+export { findAllSessions };
