@@ -1,0 +1,44 @@
+{
+  "name": "agtail",
+  "version": "0.1.0",
+  "description": "Cross-agent forensic search for coding-agent histories (Claude Code, Codex). Search-first; read-only.",
+  "type": "module",
+  "bin": {
+    "agtail": "dist/cli/index.js"
+  },
+  "files": [
+    "dist",
+    "dist-web"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@11.6.0",
+  "scripts": {
+    "build:web": "vite build",
+    "build:node": "tsup",
+    "build": "pnpm build:web && pnpm build:node",
+    "dev:web": "vite",
+    "dev:cli": "tsx src/cli/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^9.0.1",
+    "remark-gfm": "^4.0.0",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3",
+    "vitest": "^2.1.8"
+  }
+}

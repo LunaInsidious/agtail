@@ -1,0 +1,4 @@
+# pnpm settings live here in pnpm v11+. esbuild needs its postinstall to fetch
+# the platform binary used by vite / tsup / tsx.
+allowBuilds:
+  esbuild: true
