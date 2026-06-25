@@ -77,7 +77,9 @@ main { display: flex; flex: 1; min-height: 0; }
 .sidebar { flex: 0 0 340px; overflow: auto; background: var(--panel); }
 .resizer { flex: 0 0 5px; cursor: col-resize; background: var(--border); }
 .resizer:hover, .resizer:active { background: var(--tool); }
-.tabs { display: flex; position: sticky; top: 0; background: var(--panel); border-bottom: 1px solid var(--border); }
+/* z-index keeps the sticky header above dimmed rows: their opacity:.6 forms a
+   stacking context that would otherwise paint over a z-index-less sticky bar. */
+.tabs { display: flex; position: sticky; top: 0; z-index: 2; background: var(--panel); border-bottom: 1px solid var(--border); }
 .tabs button {
   flex: 1; background: none; border: none; color: var(--muted); padding: 8px; cursor: pointer;
   font-family: var(--mono); font-size: 12px;
@@ -143,8 +145,18 @@ main { display: flex; flex: 1; min-height: 0; }
 .controls label { color: var(--muted); font-size: 11px; display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .controls label.on { color: var(--text); }
 .controls label em { color: var(--faint); font-style: normal; }
-/* Hook group: master "hooks" checkbox + its per-type sub-toggles, boxed together. */
-.hookgroup { display: flex; align-items: center; gap: 6px; padding: 2px 6px; border: 1px solid var(--border); border-radius: var(--rad); }
+/* Hook group: a violet-tinted zone so "these are the hook filters" reads at a
+   glance, distinct from the amber tool chips next to it. */
+.hookgroup {
+  display: flex; align-items: center; gap: 6px; padding: 3px 9px;
+  background: rgba(138,127,176,.12); border: 1px solid rgba(138,127,176,.4); border-radius: 13px;
+}
+.hookgroup .hooklabel { color: var(--think); font-weight: 600; }
+.hookgroup .hooklabel.on { color: var(--think); }
+.hookgroup .hooksep { width: 1px; align-self: stretch; background: rgba(138,127,176,.4); margin: 1px 1px; }
+/* Hook type chips: violet accent (vs amber tools) to reinforce the grouping. */
+.hookgroup .chip { border-color: rgba(138,127,176,.4); }
+.hookgroup .chip.on { color: var(--think); border-color: var(--think); background: rgba(138,127,176,.15); }
 .chip {
   background: var(--panel2); border: 1px solid var(--border); color: var(--muted);
   border-radius: 12px; padding: 2px 9px; font-family: var(--mono); font-size: 11px; cursor: pointer;
@@ -152,7 +164,8 @@ main { display: flex; flex: 1; min-height: 0; }
 .chip.on { color: var(--tool); border-color: var(--tool); }
 .chip em { color: var(--faint); font-style: normal; }
 .insearch { background: var(--panel2); border: 1px solid var(--border); color: var(--text);
-  border-radius: var(--rad); padding: 3px 8px; font-family: var(--mono); font-size: 12px; min-width: 200px; }
+  border-radius: var(--rad); padding: 3px 8px; font-family: var(--mono); font-size: 12px;
+  flex: 0 0 auto; width: 260px; }
 .controls .count { color: var(--tool); font-family: var(--mono); font-size: 11px; }
 .findnav { display: inline-flex; align-items: center; gap: 5px; }
 .findnav button {
