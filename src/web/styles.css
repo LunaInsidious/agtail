@@ -116,7 +116,7 @@ main { display: flex; flex: 1; min-height: 0; }
 .ev.agentinstr .role { color: var(--think); }
 
 .timeline { flex: 1; overflow: auto; }
-.empty { color: var(--muted); padding: 40px; text-align: center; font-family: var(--mono); }
+.empty { color: var(--muted); padding: 40px; text-align: center; font-family: var(--mono); line-height: 1.9; }
 .thead { position: sticky; top: 0; z-index: 5; background: var(--panel); }
 .meta {
   display: flex; gap: 10px; align-items: center; flex-wrap: wrap;

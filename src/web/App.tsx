@@ -303,9 +303,11 @@ export function App() {
             <button className={tab === "sessions" ? "on" : ""} onClick={() => setTab("sessions")}>
               Sessions {sessions.length ? `(${sessions.length})` : ""}
             </button>
-            <button className={tab === "hits" ? "on" : ""} onClick={() => setTab("hits")} disabled={!hits}>
-              Hits {hits ? `(${hits.length}${truncated ? "+" : ""})` : ""}
-            </button>
+            {hits && (
+              <button className={tab === "hits" ? "on" : ""} onClick={() => setTab("hits")}>
+                Hits {`(${hits.length}${truncated ? "+" : ""})`}
+              </button>
+            )}
           </div>
           {tab === "sessions" ? (
             <SessionList sessions={sessions} cur={cur} onOpen={open} />
@@ -321,7 +323,13 @@ export function App() {
         <div className="resizer" onMouseDown={startResize} title="Drag to resize" />
         <section className="timeline">
           {loading && <div className="empty">Loading…</div>}
-          {!loading && !cur && <div className="empty">← Select a session or hit</div>}
+          {!loading && !cur && (
+            <div className="empty">
+              ← Select a session from the list
+              <br />
+              or search across all sessions from the bar above ↑
+            </div>
+          )}
           {!loading && cur && <Timeline session={cur} seed={seed} onOpen={open} />}
         </section>
       </main>
