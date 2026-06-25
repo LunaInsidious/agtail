@@ -163,6 +163,17 @@ main { display: flex; flex: 1; min-height: 0; }
 }
 .chip.on { color: var(--tool); border-color: var(--tool); }
 .chip em { color: var(--faint); font-style: normal; }
+/* Tools disclosure: a single chip opening a scrollable cloud of tool filters, so
+   the controls row stays short even with 20+ tools (incl. mcp__*). */
+.toolmenu { position: relative; display: inline-flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.toolmenu .caret { color: var(--faint); }
+.toolpop {
+  position: absolute; top: calc(100% + 5px); left: 0; z-index: 20;
+  display: flex; flex-wrap: wrap; gap: 5px; align-content: flex-start;
+  max-width: 460px; max-height: 280px; overflow: auto;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--rad);
+  padding: 8px; box-shadow: 0 10px 28px rgba(0,0,0,.45);
+}
 .insearch { background: var(--panel2); border: 1px solid var(--border); color: var(--text);
   border-radius: var(--rad); padding: 3px 8px; font-family: var(--mono); font-size: 12px;
   flex: 0 0 auto; width: 260px; }
@@ -177,6 +188,8 @@ main { display: flex; flex: 1; min-height: 0; }
 /* Active match: a left rail + faint wash so the current hit stands out while
    the surrounding context stays visible. */
 .evrow.active { box-shadow: inset 3px 0 0 var(--tool); background: rgba(224,164,88,.06); }
+/* Filters hide rows in place (kept mounted) so toggling them stays cheap. */
+.evrow.hidden { display: none; }
 mark { background: var(--tool); color: #1a1205; border-radius: 2px; padding: 0 1px; }
 
 .events { padding: 6px 0 60px; }

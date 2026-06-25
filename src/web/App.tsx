@@ -631,6 +631,10 @@ const Timeline = memo(function Timeline({
   const [matchesOnly, setMatchesOnly] = useState(false);
   const [activeMatch, setActiveMatch] = useState(0);
   const rowRefs = useRef<(HTMLDivElement | null)[]>([]);
+  // Tools live behind a disclosure (a session can have 20+ tools incl. mcp__*),
+  // so the controls row stays short regardless of count.
+  const [showTools, setShowTools] = useState(false);
+  const toolsRef = useRef<HTMLDivElement>(null);
 
   // Re-apply the search context carried from a hit whenever a new session opens.
   useEffect(() => {
@@ -638,6 +642,16 @@ const Timeline = memo(function Timeline({
     setToolFilter(seedTools(seed));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.id]);
+
+  // Close the tools popover on outside click.
+  useEffect(() => {
+    if (!showTools) return;
+    const onDown = (e: MouseEvent) => {
+      if (toolsRef.current && !toolsRef.current.contains(e.target as Node)) setShowTools(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [showTools]);
 
   const tools = useMemo(() => {
     const c = new Map<string, number>();
@@ -671,17 +685,28 @@ const Timeline = memo(function Timeline({
       return n;
     });
 
-  const base = session.events.filter((e) => {
-    if (e.kind === "thinking" && !showThinking) return false;
-    if (e.kind === "hook" && (!showHooks || (hookFocus.size > 0 && !hookFocus.has(e.hookEvent ?? "hook")))) return false;
-    if ((e.kind === "system" || e.kind === "unknown" || e.kind === "summary") && !showMeta) return false;
-    if (toolFilter.size && !(e.kind === "tool_use" && e.tool && toolFilter.has(e.tool))) return false;
-    return true;
-  });
   const isMatch = (e: Event) => !!needle && eventText(e).toLowerCase().includes(needle);
-  const visible = needle && matchesOnly ? base.filter(isMatch) : base;
-  // Indices into `visible` that contain the needle, for the jump counter/nav.
-  const matchIdxs = needle ? visible.map((e, i) => (isMatch(e) ? i : -1)).filter((i) => i >= 0) : [];
+  // Every event stays mounted; filters just hide rows via CSS. Toggling a filter
+  // is then a className flip (cheap, memoized rows skip) instead of unmounting
+  // and re-mounting (re-parsing markdown for) thousands of rows.
+  const isHidden = useCallback(
+    (e: Event) => {
+      if (e.kind === "thinking" && !showThinking) return true;
+      if (e.kind === "hook" && (!showHooks || (hookFocus.size > 0 && !hookFocus.has(e.hookEvent ?? "hook")))) return true;
+      if ((e.kind === "system" || e.kind === "unknown" || e.kind === "summary") && !showMeta) return true;
+      if (toolFilter.size && !(e.kind === "tool_use" && e.tool && toolFilter.has(e.tool))) return true;
+      if (needle && matchesOnly && !isMatch(e)) return true;
+      return false;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [showThinking, showMeta, showHooks, hookFocus, toolFilter, needle, matchesOnly],
+  );
+  // Full-list indices of visible rows that match the needle (jump counter/nav).
+  const matchIdxs = useMemo(
+    () => (needle ? session.events.flatMap((e, i) => (!isHidden(e) && isMatch(e) ? [i] : [])) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [session, isHidden, needle],
+  );
   const cur = matchIdxs.length ? Math.min(activeMatch, matchIdxs.length - 1) : 0;
   const goMatch = (delta: number) =>
     matchIdxs.length && setActiveMatch((a) => (a + delta + matchIdxs.length) % matchIdxs.length);
@@ -698,6 +723,24 @@ const Timeline = memo(function Timeline({
     if (target != null) rowRefs.current[target]?.scrollIntoView({ block: "center", behavior: "smooth" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cur, needle, matchesOnly]);
+
+  // All rows mounted once; hidden via CSS. Rebuilt only when a filter, the query,
+  // or the active match changes — and even then memoized EventRows skip re-render
+  // (no markdown re-parse), so toggling a tool filter is instant.
+  const activeFullIdx = needle && matchIdxs.length ? matchIdxs[cur] : -1;
+  const eventRows = useMemo(
+    () =>
+      session.events.map((e, i) => (
+        <div
+          key={i}
+          ref={(el) => (rowRefs.current[i] = el)}
+          className={"evrow" + (isHidden(e) ? " hidden" : "") + (i === activeFullIdx ? " active" : "")}
+        >
+          <EventRow e={e} highlight={needle} />
+        </div>
+      )),
+    [session, isHidden, needle, activeFullIdx],
+  );
 
   return (
     <>
@@ -785,24 +828,33 @@ const Timeline = memo(function Timeline({
               ))}
           </span>
         )}
-        {tools.map(([t, n]) => (
-          <button key={t} className={"chip" + (toolFilter.has(t) ? " on" : "")} onClick={() => toggle(t)}>
-            {t} <em>{n}</em>
-          </button>
-        ))}
-      </div>
-      </div>
-      <div className="events">
-        {visible.map((e, i) => (
-          <div
-            key={i}
-            ref={(el) => (rowRefs.current[i] = el)}
-            className={"evrow" + (needle && matchIdxs[cur] === i ? " active" : "")}
-          >
-            <EventRow e={e} highlight={needle} />
+        {tools.length > 0 && (
+          <div className="toolmenu" ref={toolsRef}>
+            <button className="chip" onClick={() => setShowTools((v) => !v)} title="filter to specific tools">
+              🔧 tools <span className="caret">▾</span>
+            </button>
+            {/* Selected tools shown inline so the active filter is visible without opening. */}
+            {tools
+              .filter(([t]) => toolFilter.has(t))
+              .map(([t, n]) => (
+                <button key={t} className="chip on" onClick={() => toggle(t)} title="click to remove">
+                  {t} <em>{n}</em> ✕
+                </button>
+              ))}
+            {showTools && (
+              <div className="toolpop">
+                {tools.map(([t, n]) => (
+                  <button key={t} className={"chip" + (toolFilter.has(t) ? " on" : "")} onClick={() => toggle(t)}>
+                    {t} <em>{n}</em>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-        ))}
+        )}
       </div>
+      </div>
+      <div className="events">{eventRows}</div>
     </>
   );
 });
@@ -819,7 +871,7 @@ function UsageBadge({ e }: { e: Event }) {
   );
 }
 
-function EventRow({ e, highlight }: { e: Event; highlight?: string }) {
+const EventRow = memo(function EventRow({ e, highlight }: { e: Event; highlight?: string }) {
   if (e.kind === "tool_use") {
     return (
       <div className="ev tool">
@@ -880,7 +932,7 @@ function EventRow({ e, highlight }: { e: Event; highlight?: string }) {
       </div>
     </div>
   );
-}
+});
 
 function ToolHead({ e, highlight }: { e: Event; highlight?: string }) {
   const summary = summarizeInput(e.tool, e.input);
