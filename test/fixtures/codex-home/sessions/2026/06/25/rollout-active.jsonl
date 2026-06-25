@@ -1,0 +1,3 @@
+{"timestamp":"2026-06-25T10:00:00Z","type":"session_meta","payload":{"session_id":"active-0001","cwd":"/Users/testuser/proj","cli_version":"0.142.0"}}
+{"timestamp":"2026-06-25T10:00:01Z","type":"event_msg","payload":{"type":"user_message","message":"active session prompt"}}
+{"timestamp":"2026-06-25T10:00:02Z","type":"event_msg","payload":{"type":"agent_message","message":"active reply"}}

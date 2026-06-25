@@ -1,4 +1,4 @@
-import { basename } from "node:path";
+import { basename, dirname, join, sep } from "node:path";
 import type { Adapter } from "./types.js";
 import type { Event, Session, SessionMeta, Usage } from "../types.js";
 import { iterJsonl } from "../jsonl.js";
@@ -198,22 +198,39 @@ async function readSession(path: string): Promise<Session> {
 
 export function codexAdapter(rootOverride?: string): Adapter {
   const root = expandHome(rootOverride ?? DEFAULT_ROOT);
+  // Codex moves finished threads to a sibling archived_sessions/ (same YYYY/MM/DD
+  // tree, files unchanged). We read both roots; only the source dir distinguishes
+  // them, so we tag by path prefix — that also covers reads via resolveSession.
+  const archivedRoot = join(dirname(root), "archived_sessions");
+  const isArchived = (p: string) => p === archivedRoot || p.startsWith(archivedRoot + sep);
+
+  const read = async (path: string): Promise<Session> => {
+    const sess = await readSession(path);
+    if (isArchived(path)) sess.archived = true;
+    return sess;
+  };
+
+  const scan = async (dir: string): Promise<SessionMeta[]> => {
+    const paths = await walkFiles(dir, (n) => n.startsWith("rollout-") && n.endsWith(".jsonl"));
+    const metas = await Promise.all(
+      paths.map(async (p) => {
+        const sess = await read(p);
+        if (!hasContent(sess.events)) return null; // skip empty stub sessions
+        const { events, ...meta } = sess;
+        void events;
+        return meta;
+      }),
+    );
+    return metas.filter((m): m is SessionMeta => m !== null);
+  };
+
   return {
     agent: "codex",
-    roots: () => [root],
+    roots: () => [root, archivedRoot],
     async findSessions(): Promise<SessionMeta[]> {
-      const paths = await walkFiles(root, (n) => n.startsWith("rollout-") && n.endsWith(".jsonl"));
-      const metas = await Promise.all(
-        paths.map(async (p) => {
-          const sess = await readSession(p);
-          if (!hasContent(sess.events)) return null; // skip empty stub sessions
-          const { events, ...meta } = sess;
-          void events;
-          return meta;
-        }),
-      );
-      return metas.filter((m): m is SessionMeta => m !== null);
+      const [active, archived] = await Promise.all([scan(root), scan(archivedRoot)]);
+      return [...active, ...archived];
     },
-    readSession,
+    readSession: read,
   };
 }

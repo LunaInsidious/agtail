@@ -1,4 +1,5 @@
-import type { Agent, Session, SessionMeta } from "../types.js";
+import type { Agent, ArchivedFilter, Session, SessionMeta } from "../types.js";
+import { matchArchived } from "../types.js";
 import type { Adapter, RootOverrides } from "./types.js";
 import { claudeCodeAdapter } from "./claude-code.js";
 import { codexAdapter } from "./codex.js";
@@ -18,14 +19,19 @@ export function selectAdapters(agents?: Agent[], overrides: RootOverrides = {}):
   return all.filter((a) => want.has(a.agent));
 }
 
-/** Cross-agent session listing, newest first. */
+/** Cross-agent session listing, newest first. Archived sessions are included
+ *  unless `archived` narrows to "only" / "none" (they are still real history). */
 export async function findAllSessions(
   agents?: Agent[],
   overrides?: RootOverrides,
+  archived?: ArchivedFilter,
 ): Promise<SessionMeta[]> {
   const adapters = selectAdapters(agents, overrides);
   const lists = await Promise.all(adapters.map((a) => a.findSessions()));
-  return lists.flat().sort((a, b) => b.mtime - a.mtime);
+  return lists
+    .flat()
+    .filter((m) => matchArchived(m, archived))
+    .sort((a, b) => b.mtime - a.mtime);
 }
 
 /** Resolve a session by id-prefix (and optional agent) to a full Session. */
