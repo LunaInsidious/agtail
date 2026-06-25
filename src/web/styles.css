@@ -132,9 +132,10 @@ main { display: flex; flex: 1; min-height: 0; }
 .ev.agentinstr .sig { color: var(--think); }
 .ev.agentinstr .role { color: var(--think); }
 
-.timeline { flex: 1; overflow: auto; }
+/* Flex column: fixed header above a virtualized (own-scroll) event list. */
+.timeline { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
 .empty { color: var(--muted); padding: 40px; text-align: center; font-family: var(--mono); line-height: 1.9; }
-.thead { position: sticky; top: 0; z-index: 5; background: var(--panel); }
+.thead { flex: 0 0 auto; z-index: 5; background: var(--panel); }
 .meta {
   display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
   padding: 8px 14px; background: var(--panel); border-bottom: 1px solid var(--border);
@@ -188,15 +189,10 @@ main { display: flex; flex: 1; min-height: 0; }
 /* Active match: a left rail + faint wash so the current hit stands out while
    the surrounding context stays visible. */
 .evrow.active { box-shadow: inset 3px 0 0 var(--tool); background: rgba(224,164,88,.06); }
-/* Filters hide rows in place (kept mounted) so toggling them stays cheap. */
-.evrow.hidden { display: none; }
 mark { background: var(--tool); color: #1a1205; border-radius: 2px; padding: 0 1px; }
 
 .events { padding: 6px 0 60px; }
-.ev { display: grid; grid-template-columns: 18px 1fr; gap: 0 8px; padding: 4px 16px; align-items: start;
-  /* Skip layout/paint of off-screen rows so resizing a huge (un-virtualized)
-     timeline doesn't reflow thousands of rows at once. */
-  content-visibility: auto; contain-intrinsic-size: auto 40px; }
+.ev { display: grid; grid-template-columns: 18px 1fr; gap: 0 8px; padding: 4px 16px; align-items: start; }
 .ev .sig { font-family: var(--mono); font-weight: 700; text-align: center; }
 .ev.tool .sig { color: var(--tool); } .ev.user .sig { color: var(--user); }
 .ev.assistant .sig { color: var(--muted); } .ev.think .sig { color: var(--think); }

@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -626,11 +627,14 @@ const Timeline = memo(function Timeline({
   const [showHooks, setShowHooks] = useState(true); // master toggle for all hooks
   const [hookFocus, setHookFocus] = useState<Set<string>>(new Set()); // focus hook types (empty = all), like tools
   const [find, setFind] = useState(seed.find);
+  // The applied query is debounced so a per-keystroke re-render of a huge
+  // timeline doesn't make typing lag (the input itself stays immediate).
+  const [needle, setNeedle] = useState(seed.find.trim().toLowerCase());
   // Text find is non-destructive by default (highlight + jump); "matches only"
   // collapses the timeline to just the matching events.
   const [matchesOnly, setMatchesOnly] = useState(false);
   const [activeMatch, setActiveMatch] = useState(0);
-  const rowRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
   // Tools live behind a disclosure (a session can have 20+ tools incl. mcp__*),
   // so the controls row stays short regardless of count.
   const [showTools, setShowTools] = useState(false);
@@ -639,9 +643,16 @@ const Timeline = memo(function Timeline({
   // Re-apply the search context carried from a hit whenever a new session opens.
   useEffect(() => {
     setFind(seed.find);
+    setNeedle(seed.find.trim().toLowerCase());
     setToolFilter(seedTools(seed));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.id]);
+
+  // Debounce the applied query.
+  useEffect(() => {
+    const t = setTimeout(() => setNeedle(find.trim().toLowerCase()), 200);
+    return () => clearTimeout(t);
+  }, [find]);
 
   // Close the tools popover on outside click.
   useEffect(() => {
@@ -667,7 +678,9 @@ const Timeline = memo(function Timeline({
     });
 
   const u = session.usage;
-  const needle = find.trim().toLowerCase();
+  // Precompute each event's searchable text once per session so matching on every
+  // keystroke is a cheap `includes`, not a fresh eventText()/JSON.stringify pass.
+  const searchText = useMemo(() => session.events.map((e) => eventText(e).toLowerCase()), [session]);
 
   // Events left after the explicit subsetting filters (thinking/meta/tool). The
   // text find does NOT subset here — it highlights + navigates over this set.
@@ -685,31 +698,32 @@ const Timeline = memo(function Timeline({
       return n;
     });
 
-  const isMatch = (e: Event) => !!needle && eventText(e).toLowerCase().includes(needle);
-  // Every event stays mounted; filters just hide rows via CSS. Toggling a filter
-  // is then a className flip (cheap, memoized rows skip) instead of unmounting
-  // and re-mounting (re-parsing markdown for) thousands of rows.
-  const isHidden = useCallback(
-    (e: Event) => {
-      if (e.kind === "thinking" && !showThinking) return true;
-      if (e.kind === "hook" && (!showHooks || (hookFocus.size > 0 && !hookFocus.has(e.hookEvent ?? "hook")))) return true;
-      if ((e.kind === "system" || e.kind === "unknown" || e.kind === "summary") && !showMeta) return true;
-      if (toolFilter.size && !(e.kind === "tool_use" && e.tool && toolFilter.has(e.tool))) return true;
-      if (needle && matchesOnly && !isMatch(e)) return true;
-      return false;
-    },
+  const matchesAt = (i: number) => !!needle && searchText[i]!.includes(needle);
+  const isHidden = (e: Event, i: number) => {
+    if (e.kind === "thinking" && !showThinking) return true;
+    if (e.kind === "hook" && (!showHooks || (hookFocus.size > 0 && !hookFocus.has(e.hookEvent ?? "hook")))) return true;
+    if ((e.kind === "system" || e.kind === "unknown" || e.kind === "summary") && !showMeta) return true;
+    if (toolFilter.size && !(e.kind === "tool_use" && e.tool && toolFilter.has(e.tool))) return true;
+    if (needle && matchesOnly && !matchesAt(i)) return true;
+    return false;
+  };
+  // Original indices of the rows that pass the filters; the virtualized list only
+  // mounts the ones on screen, so filtering/find/open are all O(viewport).
+  const visibleIdx = useMemo(
+    () => session.events.flatMap((e, i) => (isHidden(e, i) ? [] : [i])),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [showThinking, showMeta, showHooks, hookFocus, toolFilter, needle, matchesOnly],
+    [session, showThinking, showMeta, showHooks, hookFocus, toolFilter, needle, matchesOnly, searchText],
   );
-  // Full-list indices of visible rows that match the needle (jump counter/nav).
-  const matchIdxs = useMemo(
-    () => (needle ? session.events.flatMap((e, i) => (!isHidden(e) && isMatch(e) ? [i] : [])) : []),
+  // Positions within `visibleIdx` that match the needle (jump counter/nav).
+  const matchPositions = useMemo(
+    () => (needle ? visibleIdx.flatMap((oi, p) => (matchesAt(oi) ? [p] : [])) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [session, isHidden, needle],
+    [visibleIdx, needle, searchText],
   );
-  const cur = matchIdxs.length ? Math.min(activeMatch, matchIdxs.length - 1) : 0;
+  const cur = matchPositions.length ? Math.min(activeMatch, matchPositions.length - 1) : 0;
+  const activePos = needle && matchPositions.length ? matchPositions[cur]! : -1;
   const goMatch = (delta: number) =>
-    matchIdxs.length && setActiveMatch((a) => (a + delta + matchIdxs.length) % matchIdxs.length);
+    matchPositions.length && setActiveMatch((a) => (a + delta + matchPositions.length) % matchPositions.length);
 
   // Reset to the first match when the query or the visible set changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -719,28 +733,9 @@ const Timeline = memo(function Timeline({
   );
   // Scroll the active match into view as it changes.
   useEffect(() => {
-    const target = matchIdxs[cur];
-    if (target != null) rowRefs.current[target]?.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (activePos >= 0) virtuosoRef.current?.scrollToIndex({ index: activePos, align: "center", behavior: "smooth" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cur, needle, matchesOnly]);
-
-  // All rows mounted once; hidden via CSS. Rebuilt only when a filter, the query,
-  // or the active match changes — and even then memoized EventRows skip re-render
-  // (no markdown re-parse), so toggling a tool filter is instant.
-  const activeFullIdx = needle && matchIdxs.length ? matchIdxs[cur] : -1;
-  const eventRows = useMemo(
-    () =>
-      session.events.map((e, i) => (
-        <div
-          key={i}
-          ref={(el) => (rowRefs.current[i] = el)}
-          className={"evrow" + (isHidden(e) ? " hidden" : "") + (i === activeFullIdx ? " active" : "")}
-        >
-          <EventRow e={e} highlight={needle} />
-        </div>
-      )),
-    [session, isHidden, needle, activeFullIdx],
-  );
 
   return (
     <>
@@ -788,13 +783,13 @@ const Timeline = memo(function Timeline({
         />
         {needle && (
           <span className="findnav">
-            <button type="button" onClick={() => goMatch(-1)} disabled={!matchIdxs.length} title="previous (Shift+Enter)">
+            <button type="button" onClick={() => goMatch(-1)} disabled={!matchPositions.length} title="previous (Shift+Enter)">
               ↑
             </button>
-            <button type="button" onClick={() => goMatch(1)} disabled={!matchIdxs.length} title="next (Enter)">
+            <button type="button" onClick={() => goMatch(1)} disabled={!matchPositions.length} title="next (Enter)">
               ↓
             </button>
-            <span className="count">{matchIdxs.length ? `${cur + 1}/${matchIdxs.length}` : "0/0"}</span>
+            <span className="count">{matchPositions.length ? `${cur + 1}/${matchPositions.length}` : "0/0"}</span>
             <label className={matchesOnly ? "on" : ""}>
               <input type="checkbox" checked={matchesOnly} onChange={(e) => setMatchesOnly(e.target.checked)} /> matches only
             </label>
@@ -854,7 +849,20 @@ const Timeline = memo(function Timeline({
         )}
       </div>
       </div>
-      <div className="events">{eventRows}</div>
+      <Virtuoso
+        ref={virtuosoRef}
+        className="events"
+        style={{ flex: "1 1 auto", minHeight: 0 }}
+        data={visibleIdx}
+        increaseViewportBy={400}
+        computeItemKey={(_, oi) => oi}
+        itemContent={(index, oi) => (
+          <div className={"evrow" + (index === activePos ? " active" : "")}>
+            {/* Highlight only matching rows so non-matching rows skip re-render. */}
+            <EventRow e={session.events[oi]!} highlight={matchesAt(oi) ? needle : undefined} />
+          </div>
+        )}
+      />
     </>
   );
 });
