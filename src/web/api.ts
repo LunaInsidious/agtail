@@ -1,5 +1,6 @@
 // Types mirror src/core/types.ts (kept in sync by hand; the API is the contract).
 export type Agent = "claude-code" | "codex";
+export type ArchivedFilter = "all" | "only" | "none";
 export type EventKind =
   | "text" | "thinking" | "tool_use" | "tool_result" | "summary" | "system" | "unknown";
 
@@ -44,6 +45,7 @@ export interface SessionMeta {
   gitBranch?: string;
   model?: string;
   version?: string;
+  archived?: boolean;
   isSubagent?: boolean;
   parentId?: string;
   agentName?: string;
@@ -63,6 +65,20 @@ export interface Match {
   kind: EventKind;
   tool?: string;
   cwd?: string;
+  archived?: boolean;
+  snippet: string;
+}
+
+export interface SessionHit {
+  agent: Agent;
+  sessionId: string;
+  path: string;
+  cwd?: string;
+  title: string;
+  ts?: string;
+  mtime: number;
+  archived?: boolean;
+  matchCount: number;
   snippet: string;
 }
 
@@ -75,6 +91,8 @@ export interface Filters {
   until: string;
   kinds: EventKind[];
   mask: boolean;
+  /** Treat archived sessions: all (default) | only | none. */
+  archived: ArchivedFilter;
 }
 
 function qs(params: Record<string, string | string[] | undefined>): string {
@@ -94,7 +112,10 @@ export async function apiFacets(): Promise<{ tools: string[]; cwds: string[] }> 
 }
 
 export async function apiSessions(f: Partial<Filters>): Promise<SessionMeta[]> {
-  const r = await fetch("/api/sessions" + qs({ agent: f.agents?.join(","), project: f.cwd }));
+  const r = await fetch(
+    "/api/sessions" +
+      qs({ agent: f.agents?.join(","), project: f.cwd, archived: f.archived && f.archived !== "all" ? f.archived : undefined }),
+  );
   return r.json();
 }
 
@@ -103,7 +124,7 @@ export async function apiSession(agent: Agent, id: string, mask: boolean): Promi
   return r.json();
 }
 
-export async function apiSearch(f: Filters): Promise<Match[]> {
+export async function apiSearch(f: Filters, limit: number): Promise<SessionHit[]> {
   const r = await fetch(
     "/api/search" +
       qs({
@@ -115,6 +136,8 @@ export async function apiSearch(f: Filters): Promise<Match[]> {
         until: f.until,
         kind: f.kinds.join(","),
         mask: f.mask ? "1" : "0",
+        archived: f.archived && f.archived !== "all" ? f.archived : undefined,
+        limit: String(limit),
       }),
   );
   return r.json();

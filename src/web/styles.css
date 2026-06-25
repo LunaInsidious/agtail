@@ -17,7 +17,7 @@ header {
 }
 .brand { font-family: var(--mono); font-weight: 600; letter-spacing: .04em; }
 .brand b { color: var(--tool); }
-.search { display: flex; gap: 6px; flex: 1; min-width: 320px; }
+.search { display: flex; gap: 6px; flex: 1 1 260px; min-width: 220px; }
 header input, header button, header select {
   background: var(--panel2); border: 1px solid var(--border); color: var(--text);
   border-radius: var(--rad); padding: 5px 9px; font-family: var(--mono); font-size: 12px;
@@ -30,6 +30,48 @@ header select { max-width: 200px; cursor: pointer; }
 .agents { display: flex; gap: 6px; }
 .agents label, .mask { color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .agents label.on { color: var(--text); }
+
+/* Filter popover: the controls live here; applied values show as chips below. */
+.filtermenu { position: relative; flex: 0 0 auto; margin-left: auto; }
+.addfilter {
+  background: var(--panel2); border: 1px solid var(--border); color: var(--muted);
+  border-radius: var(--rad); padding: 5px 11px; font-family: var(--mono); font-size: 12px; cursor: pointer;
+}
+.addfilter:hover { color: var(--text); }
+.addfilter.has { color: var(--tool); border-color: var(--tool); }
+.filterpop {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; width: 300px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--rad); padding: 12px;
+  display: flex; flex-direction: column; gap: 11px; box-shadow: 0 10px 28px rgba(0,0,0,.45);
+}
+.filterpop .frow { display: flex; flex-direction: column; gap: 5px; }
+.filterpop .frow > .lbl {
+  color: var(--muted); font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+}
+.filterpop select, .filterpop input[type=date] {
+  background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+  border-radius: var(--rad); padding: 5px 9px; font-family: var(--mono); font-size: 12px; width: 100%;
+}
+.filterpop .dates { display: flex; gap: 6px; }
+.filterpop .dates input { flex: 1; }
+.filterpop .clear {
+  align-self: flex-end; background: none; border: 1px solid var(--border); color: var(--muted);
+  border-radius: var(--rad); padding: 3px 11px; cursor: pointer; font-size: 11px; font-family: var(--mono);
+}
+.filterpop .clear:hover { color: var(--err); border-color: var(--err); }
+
+/* Applied-filter chips: always visible on their own line so the active scope is
+   never hidden behind interaction. */
+.chips { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.fchip {
+  display: inline-flex; align-items: center; gap: 4px; background: var(--panel2); border: 1px solid var(--border);
+  border-radius: 12px; padding: 2px 3px 2px 9px; font-family: var(--mono); font-size: 11px; color: var(--text);
+}
+.fchip .x {
+  background: none; border: none; color: var(--muted); cursor: pointer; font-size: 10px;
+  line-height: 1; padding: 2px 4px; border-radius: 8px;
+}
+.fchip .x:hover { color: var(--err); background: rgba(217,108,108,.15); }
 
 main { display: flex; flex: 1; min-height: 0; }
 .sidebar { flex: 0 0 340px; overflow: auto; background: var(--panel); }
@@ -57,8 +99,16 @@ main { display: flex; flex: 1; min-height: 0; }
 .hit .snippet { margin-top: 3px; color: var(--text); font-size: 12px; line-height: 1.4;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .hit .kind { color: var(--faint); } .hit .tool { color: var(--tool); }
+.hit .matchn { color: var(--ok); margin-left: auto; }
+.trunc { padding: 7px 12px; font-size: 11px; line-height: 1.4; color: var(--tool);
+  background: rgba(224,164,88,.1); border-bottom: 1px solid var(--border); }
 .sess.child { padding-left: 26px; background: rgba(138,127,176,.05); }
 .sess.child .title { -webkit-line-clamp: 1; color: var(--muted); }
+/* Archived: de-emphasise the whole row; the 🗄 marker carries the meaning. */
+.sess.archived, .hit.archived { opacity: .6; }
+.sess.archived:hover, .hit.archived:hover, .sess.archived.active { opacity: 1; }
+.archmark { font-size: 10px; opacity: .85; }
+.meta .archmark { color: var(--muted); }
 .branch { color: var(--think); }
 .agentname { color: var(--think); border: 1px solid var(--think); border-radius: 4px; padding: 0 4px; font-size: 10px; }
 .subof { color: var(--think); } .subof a { color: var(--think); text-decoration: underline; cursor: pointer; }

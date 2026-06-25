@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -9,12 +9,26 @@ import {
   type Agent,
   type Event,
   type Filters,
-  type Match,
   type Session,
+  type SessionHit,
   type SessionMeta,
 } from "./api.js";
 
+// Search context carried from a hit into the opened session's in-view search.
+type Seed = { find: string; tool?: string };
+
 const homeShort = (p: string) => p.replace(/^\/Users\/[^/]+/, "~").replace(/^\/home\/[^/]+/, "~");
+
+// Search result cap (matching events). User-selectable; 0 means no limit ("All").
+// Hitting the cap means results were truncated and there may be more ("500+").
+const DEFAULT_LIMIT = 500;
+const LIMIT_OPTIONS: { value: number; label: string }[] = [
+  { value: 100, label: "100" },
+  { value: 500, label: "500" },
+  { value: 1000, label: "1,000" },
+  { value: 5000, label: "5,000" },
+  { value: 0, label: "All" },
+];
 
 const AGENTS: Agent[] = ["claude-code", "codex"];
 const tag = (a: Agent) => (a === "claude-code" ? "claude" : a);
@@ -36,17 +50,68 @@ const emptyFilters: Filters = {
   until: "",
   kinds: [],
   mask: false,
+  archived: "all",
 };
 
 export function App() {
   const [filters, setFilters] = useState<Filters>(emptyFilters);
   const [facets, setFacets] = useState<{ tools: string[]; cwds: string[] }>({ tools: [], cwds: [] });
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
-  const [hits, setHits] = useState<Match[] | null>(null);
+  const [hits, setHits] = useState<SessionHit[] | null>(null);
   const [tab, setTab] = useState<"sessions" | "hits">("sessions");
   const [cur, setCur] = useState<Session | null>(null);
+  const [seed, setSeed] = useState<Seed>({ find: "" });
   const [loading, setLoading] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const set = (p: Partial<Filters>) => setFilters((f) => ({ ...f, ...p }));
+
+  // Status filter mirrors the agent toggles: two chips (active / archived) where
+  // neither-or-both selected means "all", matching the agents "none = all" idiom.
+  const toggleStatus = (k: "active" | "archived") => {
+    let active = filters.archived === "none";
+    let archived = filters.archived === "only";
+    if (k === "active") active = !active;
+    else archived = !archived;
+    set({ archived: active && !archived ? "none" : archived && !active ? "only" : "all" });
+  };
+
+  // Close the filter popover on outside click. The ref wraps button + popover so
+  // clicking the toggle itself doesn't immediately re-close it.
+  const popRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showFilters) return;
+    const onDown = (e: MouseEvent) => {
+      if (popRef.current && !popRef.current.contains(e.target as Node)) setShowFilters(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [showFilters]);
+
+  // Applied filters render as always-visible removable chips; the controls to
+  // add/edit them live in the popover. Unused dimensions take no bar space.
+  const chips: { key: string; label: string; onRemove: () => void }[] = [];
+  for (const a of filters.agents)
+    chips.push({ key: "agent:" + a, label: tag(a), onRemove: () => set({ agents: filters.agents.filter((x) => x !== a) }) });
+  for (const t of filters.tools)
+    chips.push({ key: "tool:" + t, label: "⚙ " + t, onRemove: () => set({ tools: filters.tools.filter((x) => x !== t) }) });
+  if (filters.cwd) chips.push({ key: "cwd", label: "📁 " + homeShort(filters.cwd), onRemove: () => set({ cwd: "" }) });
+  if (filters.since) chips.push({ key: "since", label: "≥ " + filters.since, onRemove: () => set({ since: "" }) });
+  if (filters.until) chips.push({ key: "until", label: "≤ " + filters.until, onRemove: () => set({ until: "" }) });
+  if (filters.archived !== "all")
+    chips.push({
+      key: "status",
+      label: filters.archived === "only" ? "🗄 archived" : "active only",
+      onRemove: () => set({ archived: "all" }),
+    });
+  if (filters.mask) chips.push({ key: "mask", label: "🔒 mask", onRemove: () => set({ mask: false }) });
+
+  const clearAll = () =>
+    set({ agents: [], tools: [], cwd: "", since: "", until: "", archived: "all", mask: false });
+
+  // Hits are matching sessions. With a finite cap, reaching it means more
+  // sessions matched than were returned; "All" (limit 0) never truncates.
+  const truncated = !!hits && limit > 0 && hits.length >= limit;
 
   // Resizable sidebar (persisted).
   const [sbWidth, setSbWidth] = useState(() => {
@@ -72,15 +137,16 @@ export function App() {
   };
 
   useEffect(() => {
-    apiSessions({ agents: filters.agents, cwd: filters.cwd }).then(setSessions);
+    apiSessions({ agents: filters.agents, cwd: filters.cwd, archived: filters.archived }).then(setSessions);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.agents.join(","), filters.cwd]);
+  }, [filters.agents.join(","), filters.cwd, filters.archived]);
 
   useEffect(() => {
     apiFacets().then(setFacets);
   }, []);
 
-  async function open(agent: Agent, id: string) {
+  async function open(agent: Agent, id: string, withSeed?: Seed) {
+    setSeed(withSeed ?? { find: "" });
     setLoading(true);
     try {
       setCur(await apiSession(agent, id, filters.mask));
@@ -93,7 +159,7 @@ export function App() {
     e?.preventDefault();
     setLoading(true);
     try {
-      setHits(await apiSearch(filters));
+      setHits(await apiSearch(filters, limit));
       setTab("hits");
     } finally {
       setLoading(false);
@@ -109,81 +175,154 @@ export function App() {
         <form className="search" onSubmit={runSearch}>
           <input
             type="search"
-            placeholder="全セッションを横断検索…"
+            placeholder="Search across all sessions…"
             value={filters.q}
             onChange={(e) => set({ q: e.target.value })}
           />
-          <select
-            className="tool"
-            value={filters.tools[0] ?? ""}
-            onChange={(e) => set({ tools: e.target.value ? [e.target.value] : [] })}
-            title="tool"
-          >
-            <option value="">tool（すべて）</option>
-            {facets.tools.some((t) => t.startsWith("mcp__")) && <option value="mcp__*">mcp__* (MCP すべて)</option>}
-            {facets.tools.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-          <select className="cwd" value={filters.cwd} onChange={(e) => set({ cwd: e.target.value })} title="cwd">
-            <option value="">cwd（すべて）</option>
-            {facets.cwds.map((c) => (
-              <option key={c} value={c}>
-                {homeShort(c)}
-              </option>
-            ))}
-          </select>
-          <input type="date" value={filters.since} onChange={(e) => set({ since: e.target.value })} title="since" />
-          <input type="date" value={filters.until} onChange={(e) => set({ until: e.target.value })} title="until" />
-          <button type="submit">検索</button>
+          <button type="submit">Search</button>
         </form>
-        <span className="agents">
-          {AGENTS.map((a) => (
-            <label key={a} className={filters.agents.includes(a) ? "on" : ""}>
-              <input
-                type="checkbox"
-                checked={filters.agents.includes(a)}
-                onChange={(e) =>
-                  set({
-                    agents: e.target.checked
-                      ? [...filters.agents, a]
-                      : filters.agents.filter((x) => x !== a),
-                  })
-                }
-              />
-              {tag(a)}
-            </label>
-          ))}
-        </span>
-        <label className="mask">
-          <input type="checkbox" checked={filters.mask} onChange={(e) => set({ mask: e.target.checked })} />
-          マスク
-        </label>
+        <div className="filtermenu" ref={popRef}>
+          <button
+            type="button"
+            className={"addfilter" + (chips.length ? " has" : "")}
+            onClick={() => setShowFilters((v) => !v)}
+          >
+            ⊕ Filters{chips.length ? ` (${chips.length})` : ""}
+          </button>
+          {showFilters && (
+            <div className="filterpop">
+              <div className="frow">
+                <span className="lbl">tool</span>
+                <select
+                  value={filters.tools[0] ?? ""}
+                  onChange={(e) => set({ tools: e.target.value ? [e.target.value] : [] })}
+                >
+                  <option value="">all</option>
+                  {facets.tools.some((t) => t.startsWith("mcp__")) && <option value="mcp__*">mcp__* (all MCP)</option>}
+                  {facets.tools.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="frow">
+                <span className="lbl">project (cwd)</span>
+                <select value={filters.cwd} onChange={(e) => set({ cwd: e.target.value })}>
+                  <option value="">all</option>
+                  {facets.cwds.map((c) => (
+                    <option key={c} value={c}>
+                      {homeShort(c)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="frow">
+                <span className="lbl">date range</span>
+                <div className="dates">
+                  <input type="date" value={filters.since} onChange={(e) => set({ since: e.target.value })} title="since" />
+                  <input type="date" value={filters.until} onChange={(e) => set({ until: e.target.value })} title="until" />
+                </div>
+              </div>
+              <div className="frow">
+                <span className="lbl">agent</span>
+                <span className="agents">
+                  {AGENTS.map((a) => (
+                    <label key={a} className={filters.agents.includes(a) ? "on" : ""}>
+                      <input
+                        type="checkbox"
+                        checked={filters.agents.includes(a)}
+                        onChange={(e) =>
+                          set({
+                            agents: e.target.checked
+                              ? [...filters.agents, a]
+                              : filters.agents.filter((x) => x !== a),
+                          })
+                        }
+                      />
+                      {tag(a)}
+                    </label>
+                  ))}
+                </span>
+              </div>
+              <div className="frow">
+                <span className="lbl">status</span>
+                <span className="agents">
+                  <label className={filters.archived === "none" ? "on" : ""}>
+                    <input type="checkbox" checked={filters.archived === "none"} onChange={() => toggleStatus("active")} />
+                    active
+                  </label>
+                  <label className={filters.archived === "only" ? "on" : ""}>
+                    <input type="checkbox" checked={filters.archived === "only"} onChange={() => toggleStatus("archived")} />
+                    🗄 archived
+                  </label>
+                </span>
+              </div>
+              <div className="frow">
+                <span className="lbl">output</span>
+                <label className="mask">
+                  <input type="checkbox" checked={filters.mask} onChange={(e) => set({ mask: e.target.checked })} />
+                  Mask secrets
+                </label>
+              </div>
+              <div className="frow">
+                <span className="lbl">max results</span>
+                <select value={limit} onChange={(e) => setLimit(Number(e.target.value))}>
+                  {LIMIT_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {chips.length > 0 && (
+                <button type="button" className="clear" onClick={clearAll}>
+                  Clear all
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+        {chips.length > 0 && (
+          <div className="chips">
+            {chips.map((c) => (
+              <span className="fchip" key={c.key}>
+                {c.label}
+                <button type="button" className="x" onClick={c.onRemove} title="remove filter">
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
       </header>
 
       <main>
         <aside className="sidebar" style={{ flex: `0 0 ${sbWidth}px`, width: sbWidth }}>
           <div className="tabs">
             <button className={tab === "sessions" ? "on" : ""} onClick={() => setTab("sessions")}>
-              セッション {sessions.length ? `(${sessions.length})` : ""}
+              Sessions {sessions.length ? `(${sessions.length})` : ""}
             </button>
             <button className={tab === "hits" ? "on" : ""} onClick={() => setTab("hits")} disabled={!hits}>
-              ヒット {hits ? `(${hits.length})` : ""}
+              Hits {hits ? `(${hits.length}${truncated ? "+" : ""})` : ""}
             </button>
           </div>
           {tab === "sessions" ? (
             <SessionList sessions={sessions} cur={cur} onOpen={open} />
           ) : (
-            <HitList hits={hits ?? []} onOpen={open} />
+            <HitList
+              hits={hits ?? []}
+              truncated={truncated}
+              seed={{ find: filters.q, tool: filters.tools[0] }}
+              onOpen={open}
+            />
           )}
         </aside>
-        <div className="resizer" onMouseDown={startResize} title="ドラッグで幅変更" />
+        <div className="resizer" onMouseDown={startResize} title="Drag to resize" />
         <section className="timeline">
-          {loading && <div className="empty">読み込み中…</div>}
-          {!loading && !cur && <div className="empty">← セッションかヒットを選んでください</div>}
-          {!loading && cur && <Timeline session={cur} onOpen={open} />}
+          {loading && <div className="empty">Loading…</div>}
+          {!loading && !cur && <div className="empty">← Select a session or hit</div>}
+          {!loading && cur && <Timeline session={cur} seed={seed} onOpen={open} />}
         </section>
       </main>
     </div>
@@ -203,12 +342,13 @@ function SessionRow({
 }) {
   return (
     <div
-      className={"sess" + (child ? " child" : "") + (cur && cur.id === s.id ? " active" : "")}
+      className={"sess" + (child ? " child" : "") + (s.archived ? " archived" : "") + (cur && cur.id === s.id ? " active" : "")}
       onClick={() => onOpen(s.agent, s.id)}
     >
       <div className="row1">
         {child && <span className="branch">↳</span>}
         <span className={"src " + s.agent}>{tag(s.agent)}</span>
+        {s.archived && <span className="archmark" title="archived">🗄</span>}
         {s.isSubagent && s.agentName && <span className="agentname">{s.agentName}</span>}
         <span className="sid">{s.id.slice(0, 8)}</span>
         <span>{fmtTs(s.ended)}</span>
@@ -229,7 +369,7 @@ function SessionList({
   cur: Session | null;
   onOpen: (a: Agent, id: string) => void;
 }) {
-  if (!sessions.length) return <div className="empty">なし</div>;
+  if (!sessions.length) return <div className="empty">None</div>;
   // Nest subagent sessions under the parent that spawned them.
   const childrenOf = new Map<string, SessionMeta[]>();
   for (const s of sessions) {
@@ -264,19 +404,39 @@ function SessionList({
   );
 }
 
-function HitList({ hits, onOpen }: { hits: Match[]; onOpen: (a: Agent, id: string) => void }) {
-  if (!hits.length) return <div className="empty">一致なし</div>;
+function HitList({
+  hits,
+  truncated,
+  seed,
+  onOpen,
+}: {
+  hits: SessionHit[];
+  truncated: boolean;
+  seed: Seed;
+  onOpen: (a: Agent, id: string, seed?: Seed) => void;
+}) {
+  if (!hits.length) return <div className="empty">No matches</div>;
   return (
     <>
-      {hits.map((m, i) => (
-        <div key={i} className="hit" onClick={() => onOpen(m.agent, m.sessionId)}>
+      {truncated && (
+        <div className="trunc">
+          Showing the first {hits.length} sessions — raise “max results” or refine your search to see more.
+        </div>
+      )}
+      {hits.map((m) => (
+        <div
+          key={m.agent + m.sessionId}
+          className={"hit" + (m.archived ? " archived" : "")}
+          onClick={() => onOpen(m.agent, m.sessionId, seed)}
+        >
           <div className="row1">
             <span className={"src " + m.agent}>{tag(m.agent)}</span>
+            {m.archived && <span className="archmark" title="archived">🗄</span>}
             <span className="sid">{m.sessionId.slice(0, 8)}</span>
             <span>{fmtTs(m.ts)}</span>
-            <span className="kind">{m.kind}</span>
-            {m.tool && <span className="tool">{m.tool}</span>}
+            <span className="matchn" title="matching events">{m.matchCount} match{m.matchCount === 1 ? "" : "es"}</span>
           </div>
+          <div className="title">{m.title}</div>
           <div className="snippet">{m.snippet}</div>
         </div>
       ))}
@@ -312,11 +472,29 @@ function Highlighted({ text, term }: { text: string; term?: string }) {
   return <>{out}</>;
 }
 
-function Timeline({ session, onOpen }: { session: Session; onOpen: (a: Agent, id: string) => void }) {
-  const [toolFilter, setToolFilter] = useState<Set<string>>(new Set());
+// A glob tool filter (e.g. "mcp__*") can't seed the exact-match in-session filter.
+const seedTools = (s: Seed) => (s.tool && !s.tool.includes("*") ? new Set([s.tool]) : new Set<string>());
+
+function Timeline({
+  session,
+  seed,
+  onOpen,
+}: {
+  session: Session;
+  seed: Seed;
+  onOpen: (a: Agent, id: string, seed?: Seed) => void;
+}) {
+  const [toolFilter, setToolFilter] = useState<Set<string>>(() => seedTools(seed));
   const [showThinking, setShowThinking] = useState(true);
   const [showMeta, setShowMeta] = useState(false);
-  const [find, setFind] = useState("");
+  const [find, setFind] = useState(seed.find);
+
+  // Re-apply the search context carried from a hit whenever a new session opens.
+  useEffect(() => {
+    setFind(seed.find);
+    setToolFilter(seedTools(seed));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.id]);
 
   const tools = useMemo(() => {
     const c = new Map<string, number>();
@@ -346,6 +524,7 @@ function Timeline({ session, onOpen }: { session: Session; onOpen: (a: Agent, id
       <div className="thead">
       <div className="meta">
         <span className={"src " + session.agent}>{tag(session.agent)}</span>
+        {session.archived && <span className="archmark" title="archived">🗄 archived</span>}
         {session.isSubagent && (
           <span className="subof">
             ↳ subagent{session.agentName ? ` (${session.agentName})` : ""} of{" "}
@@ -361,7 +540,7 @@ function Timeline({ session, onOpen }: { session: Session; onOpen: (a: Agent, id
         {u && (
           <span className="cost">
             {u.totalTokens.toLocaleString()} tok ·{" "}
-            {u.costUsd != null ? `≈ $${u.costUsd.toFixed(4)}` : `cost不明${u.unpricedModels.length ? ` (${u.unpricedModels.join(",")})` : ""}`}
+            {u.costUsd != null ? `≈ $${u.costUsd.toFixed(4)}` : `cost unknown${u.unpricedModels.length ? ` (${u.unpricedModels.join(",")})` : ""}`}
           </span>
         )}
       </div>
@@ -369,11 +548,11 @@ function Timeline({ session, onOpen }: { session: Session; onOpen: (a: Agent, id
         <input
           type="search"
           className="insearch"
-          placeholder="このセッション内を検索"
+          placeholder="Search within this session"
           value={find}
           onChange={(e) => setFind(e.target.value)}
         />
-        {needle && <span className="count">{visible.length}件</span>}
+        {needle && <span className="count">{visible.length} hits</span>}
         <label className={showThinking ? "on" : ""}>
           <input type="checkbox" checked={showThinking} onChange={(e) => setShowThinking(e.target.checked)} /> thinking
         </label>
@@ -403,7 +582,7 @@ function UsageBadge({ e }: { e: Event }) {
   if (e.tokens == null) return null;
   return (
     <span className="usage" title={e.model ?? ""}>
-      {e.tokens.toLocaleString()} tok{e.cost != null ? ` · $${e.cost.toFixed(4)}` : " · cost不明"}
+      {e.tokens.toLocaleString()} tok{e.cost != null ? ` · $${e.cost.toFixed(4)}` : " · cost unknown"}
     </span>
   );
 }
@@ -535,7 +714,7 @@ function Collapsible({
 
   const moreBtn = heavy && (
     <button className="more" onClick={() => setOpen((o) => !o)}>
-      {open ? "▲ 折りたたむ" : `▼ 全部表示 (${text.length.toLocaleString()}字)`}
+      {open ? "▲ Collapse" : `▼ Show all (${text.length.toLocaleString()} chars)`}
     </button>
   );
 
