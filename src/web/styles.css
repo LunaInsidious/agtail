@@ -102,6 +102,14 @@ main { display: flex; flex: 1; min-height: 0; }
 .hit .matchn { color: var(--ok); margin-left: auto; }
 .trunc { padding: 7px 12px; font-size: 11px; line-height: 1.4; color: var(--tool);
   background: rgba(224,164,88,.1); border-bottom: 1px solid var(--border); }
+/* Search loading: centered spinner (first search) + a thin top strip (re-search). */
+.spinner { display: inline-block; width: 13px; height: 13px; vertical-align: -2px; margin-right: 6px;
+  border: 2px solid var(--border); border-top-color: var(--tool); border-radius: 50%; animation: spin .6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.searchbar { position: sticky; top: 0; z-index: 3; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--tool), transparent); background-size: 40% 100%;
+  animation: slide 1s linear infinite; }
+@keyframes slide { from { background-position: -40% 0; } to { background-position: 140% 0; } }
 .sess.child { padding-left: 26px; background: rgba(138,127,176,.05); }
 .sess.child .title { -webkit-line-clamp: 1; color: var(--muted); }
 /* Archived/automated: de-emphasise the whole row; the 🗄/🤖 marker carries the
@@ -159,7 +167,10 @@ main { display: flex; flex: 1; min-height: 0; }
 mark { background: var(--tool); color: #1a1205; border-radius: 2px; padding: 0 1px; }
 
 .events { padding: 6px 0 60px; }
-.ev { display: grid; grid-template-columns: 18px 1fr; gap: 0 8px; padding: 4px 16px; align-items: start; }
+.ev { display: grid; grid-template-columns: 18px 1fr; gap: 0 8px; padding: 4px 16px; align-items: start;
+  /* Skip layout/paint of off-screen rows so resizing a huge (un-virtualized)
+     timeline doesn't reflow thousands of rows at once. */
+  content-visibility: auto; contain-intrinsic-size: auto 40px; }
 .ev .sig { font-family: var(--mono); font-weight: 700; text-align: center; }
 .ev.tool .sig { color: var(--tool); } .ev.user .sig { color: var(--user); }
 .ev.assistant .sig { color: var(--muted); } .ev.think .sig { color: var(--think); }

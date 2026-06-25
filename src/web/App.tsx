@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -79,6 +79,8 @@ export function App() {
   const [cur, setCur] = useState<Session | null>(null);
   const [seed, setSeed] = useState<Seed>({ find: "" });
   const [loading, setLoading] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const searchSeq = useRef(0); // guards against stale (out-of-order) search resolutions
   const [showFilters, setShowFilters] = useState(false);
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const set = (p: Partial<Filters>) => setFilters((f) => ({ ...f, ...p }));
@@ -179,25 +181,77 @@ export function App() {
     apiFacets().then(setFacets);
   }, []);
 
-  async function open(agent: Agent, id: string, withSeed?: Seed) {
-    setSeed(withSeed ?? { find: "" });
-    setLoading(true);
-    try {
-      setCur(await apiSession(agent, id, filters.mask));
-    } finally {
-      setLoading(false);
-    }
-  }
+  // Stable identity so memoized SessionList/HitList/Timeline don't re-render on
+  // every keystroke (open only depends on the mask setting).
+  const open = useCallback(
+    async (agent: Agent, id: string, withSeed?: Seed) => {
+      setSeed(withSeed ?? { find: "" });
+      setLoading(true);
+      try {
+        setCur(await apiSession(agent, id, filters.mask));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [filters.mask],
+  );
 
-  async function runSearch(e?: React.FormEvent) {
-    e?.preventDefault();
-    setLoading(true);
-    try {
-      setHits(await apiSearch(filters, limit));
-      setTab("hits");
-    } finally {
-      setLoading(false);
+  // A search is meaningful when there's a query or a search-specific filter.
+  // cwd/agents/archived/automated alone just filter the Sessions list.
+  const hasSearch =
+    filters.q.trim() !== "" ||
+    filters.tools.length > 0 ||
+    filters.since !== "" ||
+    filters.until !== "" ||
+    filters.kinds.length > 0;
+
+  // Live search: re-run as filters change (debounced so typing isn't a request
+  // per keystroke). Does NOT toggle the main `loading` — searching must not blank
+  // the open session's timeline.
+  useEffect(() => {
+    if (!hasSearch) {
+      searchSeq.current++; // invalidate any in-flight search
+      setHits(null);
+      setSearching(false);
+      setTab((t) => (t === "hits" ? "sessions" : t));
+      return;
     }
+    setSearching(true); // stays true through debounce AND fetch (guarded below)
+    setTab("hits"); // show the Hits tab immediately; loading renders inside it
+    const seq = ++searchSeq.current;
+    const t = setTimeout(() => {
+      apiSearch(filters, limit)
+        // Ignore a stale resolution so an older search can't clear the loading
+        // state (or overwrite results) while a newer one is still pending.
+        .then((h) => { if (searchSeq.current === seq) setHits(h); })
+        .finally(() => { if (searchSeq.current === seq) setSearching(false); });
+    }, 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    hasSearch,
+    filters.q,
+    filters.tools.join(","),
+    filters.cwd,
+    filters.since,
+    filters.until,
+    filters.kinds.join(","),
+    filters.mask,
+    filters.archived,
+    filters.automated,
+    limit,
+  ]);
+
+  // Enter / Search button: run immediately (skip the debounce).
+  function runSearch(e?: React.FormEvent) {
+    e?.preventDefault();
+    if (!hasSearch) return;
+    setSearching(true);
+    setTab("hits");
+    const seq = ++searchSeq.current;
+    apiSearch(filters, limit)
+      .then((h) => { if (searchSeq.current === seq) setHits(h); })
+      .finally(() => { if (searchSeq.current === seq) setSearching(false); });
   }
 
   return (
@@ -350,9 +404,9 @@ export function App() {
             <button className={tab === "sessions" ? "on" : ""} onClick={() => setTab("sessions")}>
               Sessions {sessions.length ? `(${sessions.length})` : ""}
             </button>
-            {hits && (
+            {(hits || searching) && (
               <button className={tab === "hits" ? "on" : ""} onClick={() => setTab("hits")}>
-                Hits {`(${hits.length}${truncated ? "+" : ""})`}
+                Hits {hits ? `(${hits.length}${truncated ? "+" : ""})` : ""}
               </button>
             )}
           </div>
@@ -362,6 +416,7 @@ export function App() {
             <HitList
               hits={hits ?? []}
               truncated={truncated}
+              searching={searching}
               seed={{ find: filters.q, tool: filters.tools[0] }}
               onOpen={open}
             />
@@ -425,7 +480,7 @@ function SessionRow({
   );
 }
 
-function SessionList({
+const SessionList = memo(function SessionList({
   sessions,
   cur,
   onOpen,
@@ -467,22 +522,33 @@ function SessionList({
       })}
     </>
   );
-}
+});
 
 function HitList({
   hits,
   truncated,
+  searching,
   seed,
   onOpen,
 }: {
   hits: SessionHit[];
   truncated: boolean;
+  searching: boolean;
   seed: Seed;
   onOpen: (a: Agent, id: string, seed?: Seed) => void;
 }) {
-  if (!hits.length) return <div className="empty">No matches</div>;
+  // No results yet (first search) → centered spinner. Re-search with existing
+  // results keeps them visible and shows a thin loading strip on top.
+  if (!hits.length) {
+    return searching ? (
+      <div className="empty"><span className="spinner" /> Searching…</div>
+    ) : (
+      <div className="empty">No matches</div>
+    );
+  }
   return (
     <>
+      {searching && <div className="searchbar" />}
       {truncated && (
         <div className="trunc">
           Showing the first {hits.length} sessions — raise “max results” or refine your search to see more.
@@ -545,7 +611,7 @@ function Highlighted({ text, term }: { text: string; term?: string }) {
 // A glob tool filter (e.g. "mcp__*") can't seed the exact-match in-session filter.
 const seedTools = (s: Seed) => (s.tool && !s.tool.includes("*") ? new Set([s.tool]) : new Set<string>());
 
-function Timeline({
+const Timeline = memo(function Timeline({
   session,
   seed,
   onOpen,
@@ -591,6 +657,7 @@ function Timeline({
 
   // Events left after the explicit subsetting filters (thinking/meta/tool). The
   // text find does NOT subset here — it highlights + navigates over this set.
+  const thinkingCount = useMemo(() => session.events.filter((e) => e.kind === "thinking").length, [session]);
   // Distinct hook lifecycle types present, for per-type show/hide (like tools).
   const hookTypes = useMemo(() => {
     const c = new Map<string, number>();
@@ -690,17 +757,21 @@ function Timeline({
             </label>
           </span>
         )}
-        <label className={showThinking ? "on" : ""}>
-          <input type="checkbox" checked={showThinking} onChange={(e) => setShowThinking(e.target.checked)} /> thinking
-        </label>
+        {thinkingCount > 0 && (
+          <label className={showThinking ? "on" : ""}>
+            <input type="checkbox" checked={showThinking} onChange={(e) => setShowThinking(e.target.checked)} /> thinking{" "}
+            <em>{thinkingCount}</em>
+          </label>
+        )}
         <label className={showMeta ? "on" : ""}>
           <input type="checkbox" checked={showMeta} onChange={(e) => setShowMeta(e.target.checked)} /> system/meta
         </label>
         {hookTypes.length > 0 && (
           <span className="hookgroup">
-            <label className={showHooks ? "on" : ""} title="show/hide all hooks">
+            <label className={"hooklabel" + (showHooks ? " on" : "")} title="show/hide all hooks">
               <input type="checkbox" checked={showHooks} onChange={(e) => setShowHooks(e.target.checked)} /> 🪝 hooks
             </label>
+            {showHooks && hookTypes.length > 0 && <span className="hooksep" />}
             {showHooks &&
               hookTypes.map(([t, n]) => (
                 <button
@@ -734,7 +805,7 @@ function Timeline({
       </div>
     </>
   );
-}
+});
 
 const COLLAPSE_LEN = 600;
 
