@@ -52,7 +52,7 @@ export async function startServer(opts: ServeOptions): Promise<void> {
 
   await new Promise<void>((ok) => server.listen(opts.port, "127.0.0.1", ok));
   console.log(`agtail viewer → http://127.0.0.1:${opts.port}   (web: ${webRoot})`);
-  console.log("停止は Ctrl-C");
+  console.log("Stop with Ctrl-C");
 }
 
 async function serveStatic(

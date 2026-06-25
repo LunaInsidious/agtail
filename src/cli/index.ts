@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { homedir } from "node:os";
-import type { Agent, EventKind } from "../core/types.js";
+import type { Agent, ArchivedFilter, EventKind } from "../core/types.js";
 import { AGENTS } from "../core/types.js";
 import type { RootOverrides } from "../core/adapters/types.js";
 import { findAllSessions, resolveSession } from "../core/adapters/index.js";
@@ -18,6 +18,18 @@ interface GlobalOpts {
   claudeDir?: string;
   codexDir?: string;
   mask?: boolean;
+  archived?: string; // "all" (default) | "only" | "none"
+}
+
+// Archived sessions are included by default; --archived only|none narrows them.
+function archivedFilter(o: GlobalOpts): ArchivedFilter {
+  const v = o.archived;
+  if (v === "only" || v === "none") return v;
+  if (v != null && v !== "all") {
+    console.error(`--archived must be one of: all, only, none (got: ${v})`);
+    process.exit(2);
+  }
+  return "all";
 }
 
 function overrides(o: GlobalOpts): RootOverrides {
@@ -53,6 +65,7 @@ async function cmdGrep(pattern: string | undefined, opts: any, global: GlobalOpt
     since: opts.since,
     until: opts.until,
     kinds: opts.kind ? (opts.kind.split(",") as EventKind[]) : undefined,
+    archived: archivedFilter(global),
     mask: global.mask,
     limit: opts.limit ? Number(opts.limit) : undefined,
     overrides: overrides(global),
@@ -75,12 +88,12 @@ async function cmdGrep(pattern: string | undefined, opts: any, global: GlobalOpt
       );
     }
   }
-  if (!hits && !opts.json) console.log("一致なし");
+  if (!hits && !opts.json) console.log("no matches");
 }
 
 // --- list --------------------------------------------------------------------
 async function cmdList(opts: any, global: GlobalOpts) {
-  const all = await findAllSessions(parseAgents(opts.agent), overrides(global));
+  const all = await findAllSessions(parseAgents(opts.agent), overrides(global), archivedFilter(global));
   const proj = opts.project?.toLowerCase();
   const pass = (m: (typeof all)[number]) =>
     (!proj || (m.cwd ?? "").toLowerCase().includes(proj)) &&
@@ -103,10 +116,11 @@ async function cmdList(opts: any, global: GlobalOpts) {
     const sid = color(m.id.slice(0, 8), "amber");
     const when = color(shortTs(m.ended), "gray");
     const name = m.isSubagent && m.agentName ? color(`[${m.agentName}] `, "violet") : "";
+    const arch = m.archived ? color("🗄 archived ", "dim") : "";
     console.log(
       `${lead}${tag} ${sid}  ${when}  ${color(String(m.messages).padStart(4), "dim")} ev  ${color(tilde(m.cwd), "cyan")}`,
     );
-    console.log(`${indent ? "      " : ""}         ${name}${global.mask ? maskText(m.title, true) : m.title}`);
+    console.log(`${indent ? "      " : ""}         ${arch}${name}${global.mask ? maskText(m.title, true) : m.title}`);
   };
 
   for (const m of sessions) {
@@ -121,15 +135,15 @@ async function cmdList(opts: any, global: GlobalOpts) {
   for (const m of sessions) {
     if (m.isSubagent && !seenChild.has(m.id)) row(m, true);
   }
-  if (!sessions.length) console.log("セッションが見つかりません");
+  if (!sessions.length) console.log("no sessions found");
 }
 
 // --- show --------------------------------------------------------------------
 async function cmdShow(id: string, opts: any, global: GlobalOpts) {
   const sess = await resolveSession(id, parseAgents(opts.agent), overrides(global));
-  if (!sess) return console.log("該当セッションなし:", id);
+  if (!sess) return console.log("no matching session:", id);
   const doMask = Boolean(global.mask);
-  console.log(color(`${agentTag(sess.agent)} · ${sess.id}`, "bold"));
+  console.log(color(`${agentTag(sess.agent)} · ${sess.id}`, "bold") + (sess.archived ? color("  🗄 archived", "dim") : ""));
   if (sess.isSubagent) {
     console.log(color(`  ↳ subagent (${sess.agentName ?? "?"}) of ${sess.parentId}`, "violet"));
   }
@@ -141,7 +155,7 @@ async function cmdShow(id: string, opts: any, global: GlobalOpts) {
     if (!e.usage) return "";
     const tok = usageSum(e.usage);
     const c = costForModel(e.usage, e.model, resolve);
-    return color(`  [${tok.toLocaleString()} tok${c != null ? ` ≈$${c.toFixed(4)}` : " cost不明"}]`, "green");
+    return color(`  [${tok.toLocaleString()} tok${c != null ? ` ≈$${c.toFixed(4)}` : " cost unknown"}]`, "green");
   };
   for (const e of sess.events) {
     if (opts.tools && e.kind !== "tool_use") continue;
@@ -179,7 +193,7 @@ async function cmdStats(id: string | undefined, opts: any, global: GlobalOpts) {
   const sessions = id
     ? [await resolveSession(id, agents, ov)].filter(Boolean)
     : await Promise.all(
-        (await findAllSessions(agents, ov))
+        (await findAllSessions(agents, ov, archivedFilter(global)))
           .filter((m) => !opts.project || (m.cwd ?? "").toLowerCase().includes(opts.project.toLowerCase()))
           .map((m) => resolveSession(m.id, [m.agent], ov)),
       );
@@ -211,8 +225,8 @@ async function cmdStats(id: string | undefined, opts: any, global: GlobalOpts) {
     `  input ${u.inputTokens.toLocaleString()}  output ${u.outputTokens.toLocaleString()}` +
       `  cache-read ${u.cacheReadTokens.toLocaleString()}  total ${u.totalTokens.toLocaleString()}`,
   );
-  if (u.costUsd != null) console.log(`  cost ≈ $${u.costUsd.toFixed(4)} (概算)`);
-  else console.log(color(`  cost: 不明（未登録 model: ${u.unpricedModels.join(", ") || "—"}）`, "dim"));
+  if (u.costUsd != null) console.log(`  cost ≈ $${u.costUsd.toFixed(4)} (approx)`);
+  else console.log(color(`  cost: unknown (unpriced models: ${u.unpricedModels.join(", ") || "—"})`, "dim"));
 }
 
 // --- serve -------------------------------------------------------------------
@@ -228,6 +242,7 @@ program
   .description("Cross-agent forensic search for coding-agent histories (Claude Code, Codex)")
   .option("--claude-dir <path>", "override Claude Code root (~/.claude/projects)")
   .option("--codex-dir <path>", "override Codex sessions root (~/.codex/sessions)")
+  .option("--archived <mode>", "archived sessions: all (default) | only | none", "all")
   .option("--mask", "redact secrets in output");
 
 const g = (): GlobalOpts => program.opts();
