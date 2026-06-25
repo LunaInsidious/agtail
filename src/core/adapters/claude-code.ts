@@ -176,9 +176,13 @@ function normalizeLine(obj: Record<string, unknown>, seenUsage: Set<string>): Ev
         if (asString(blk.text).trim())
           events.push({ kind: "text", ts, role, text: asString(blk.text), sidechain, ...attachUsage() });
         break;
-      case "thinking":
-        events.push({ kind: "thinking", ts, role, text: asString(blk.thinking), sidechain });
+      case "thinking": {
+        // Recent Claude often persists only a signature, not the reasoning text
+        // — skip those empty blocks instead of emitting blank thinking rows.
+        const think = asString(blk.thinking);
+        if (think.trim()) events.push({ kind: "thinking", ts, role, text: think, sidechain });
         break;
+      }
       case "tool_use":
         events.push({
           kind: "tool_use",

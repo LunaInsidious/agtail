@@ -15,6 +15,13 @@ describe("claude-code adapter", () => {
     expect(sess.title).toBe("please grep for blogsync");
   });
 
+  it("keeps thinking with content but drops empty (signature-only) blocks", async () => {
+    const sess = await claudeCodeAdapter().readSession(fixture);
+    const thinking = sess.events.filter((e) => e.kind === "thinking");
+    expect(thinking.length).toBe(1);
+    expect(thinking[0]!.text).toBe("Let me search the codebase.");
+  });
+
   it("merges tool_result into its tool_use", async () => {
     const sess = await claudeCodeAdapter().readSession(fixture);
     const tu = sess.events.find((e) => e.kind === "tool_use");
