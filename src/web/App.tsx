@@ -488,6 +488,11 @@ function Timeline({
   const [showThinking, setShowThinking] = useState(true);
   const [showMeta, setShowMeta] = useState(false);
   const [find, setFind] = useState(seed.find);
+  // Text find is non-destructive by default (highlight + jump); "matches only"
+  // collapses the timeline to just the matching events.
+  const [matchesOnly, setMatchesOnly] = useState(false);
+  const [activeMatch, setActiveMatch] = useState(0);
+  const rowRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   // Re-apply the search context carried from a hit whenever a new session opens.
   useEffect(() => {
@@ -510,14 +515,33 @@ function Timeline({
     });
 
   const u = session.usage;
-  const needle = find.trim();
-  const visible = session.events.filter((e) => {
+  const needle = find.trim().toLowerCase();
+
+  // Events left after the explicit subsetting filters (thinking/meta/tool). The
+  // text find does NOT subset here — it highlights + navigates over this set.
+  const base = session.events.filter((e) => {
     if (e.kind === "thinking" && !showThinking) return false;
     if ((e.kind === "system" || e.kind === "unknown" || e.kind === "summary") && !showMeta) return false;
     if (toolFilter.size && !(e.kind === "tool_use" && e.tool && toolFilter.has(e.tool))) return false;
-    if (needle && !eventText(e).toLowerCase().includes(needle.toLowerCase())) return false;
     return true;
   });
+  const isMatch = (e: Event) => !!needle && eventText(e).toLowerCase().includes(needle);
+  const visible = needle && matchesOnly ? base.filter(isMatch) : base;
+  // Indices into `visible` that contain the needle, for the jump counter/nav.
+  const matchIdxs = needle ? visible.map((e, i) => (isMatch(e) ? i : -1)).filter((i) => i >= 0) : [];
+  const cur = matchIdxs.length ? Math.min(activeMatch, matchIdxs.length - 1) : 0;
+  const goMatch = (delta: number) =>
+    matchIdxs.length && setActiveMatch((a) => (a + delta + matchIdxs.length) % matchIdxs.length);
+
+  // Reset to the first match when the query or the visible set changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => setActiveMatch(0), [needle, matchesOnly, showThinking, showMeta, toolFilter, session.id]);
+  // Scroll the active match into view as it changes.
+  useEffect(() => {
+    const target = matchIdxs[cur];
+    if (target != null) rowRefs.current[target]?.scrollIntoView({ block: "center", behavior: "smooth" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cur, needle, matchesOnly]);
 
   return (
     <>
@@ -551,8 +575,27 @@ function Timeline({
           placeholder="Search within this session"
           value={find}
           onChange={(e) => setFind(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              goMatch(e.shiftKey ? -1 : 1);
+            }
+          }}
         />
-        {needle && <span className="count">{visible.length} hits</span>}
+        {needle && (
+          <span className="findnav">
+            <button type="button" onClick={() => goMatch(-1)} disabled={!matchIdxs.length} title="previous (Shift+Enter)">
+              ↑
+            </button>
+            <button type="button" onClick={() => goMatch(1)} disabled={!matchIdxs.length} title="next (Enter)">
+              ↓
+            </button>
+            <span className="count">{matchIdxs.length ? `${cur + 1}/${matchIdxs.length}` : "0/0"}</span>
+            <label className={matchesOnly ? "on" : ""}>
+              <input type="checkbox" checked={matchesOnly} onChange={(e) => setMatchesOnly(e.target.checked)} /> matches only
+            </label>
+          </span>
+        )}
         <label className={showThinking ? "on" : ""}>
           <input type="checkbox" checked={showThinking} onChange={(e) => setShowThinking(e.target.checked)} /> thinking
         </label>
@@ -568,7 +611,13 @@ function Timeline({
       </div>
       <div className="events">
         {visible.map((e, i) => (
-          <EventRow key={i} e={e} highlight={needle} />
+          <div
+            key={i}
+            ref={(el) => (rowRefs.current[i] = el)}
+            className={"evrow" + (needle && matchIdxs[cur] === i ? " active" : "")}
+          >
+            <EventRow e={e} highlight={needle} />
+          </div>
         ))}
       </div>
     </>

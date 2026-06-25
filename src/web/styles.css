@@ -136,6 +136,16 @@ main { display: flex; flex: 1; min-height: 0; }
 .insearch { background: var(--panel2); border: 1px solid var(--border); color: var(--text);
   border-radius: var(--rad); padding: 3px 8px; font-family: var(--mono); font-size: 12px; min-width: 200px; }
 .controls .count { color: var(--tool); font-family: var(--mono); font-size: 11px; }
+.findnav { display: inline-flex; align-items: center; gap: 5px; }
+.findnav button {
+  background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+  border-radius: var(--rad); padding: 1px 7px; font-family: var(--mono); font-size: 12px; cursor: pointer; line-height: 1.4;
+}
+.findnav button:hover:not(:disabled) { border-color: var(--tool); color: var(--tool); }
+.findnav button:disabled { opacity: .4; cursor: default; }
+/* Active match: a left rail + faint wash so the current hit stands out while
+   the surrounding context stays visible. */
+.evrow.active { box-shadow: inset 3px 0 0 var(--tool); background: rgba(224,164,88,.06); }
 mark { background: var(--tool); color: #1a1205; border-radius: 2px; padding: 0 1px; }
 
 .events { padding: 6px 0 60px; }
