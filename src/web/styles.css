@@ -104,11 +104,18 @@ main { display: flex; flex: 1; min-height: 0; }
   background: rgba(224,164,88,.1); border-bottom: 1px solid var(--border); }
 .sess.child { padding-left: 26px; background: rgba(138,127,176,.05); }
 .sess.child .title { -webkit-line-clamp: 1; color: var(--muted); }
-/* Archived: de-emphasise the whole row; the 🗄 marker carries the meaning. */
-.sess.archived, .hit.archived { opacity: .6; }
-.sess.archived:hover, .hit.archived:hover, .sess.archived.active { opacity: 1; }
+/* Archived/automated: de-emphasise the whole row; the 🗄/🤖 marker carries the
+   meaning. */
+.sess.dim, .hit.dim { opacity: .6; }
+.sess.dim:hover, .hit.dim:hover, .sess.dim.active { opacity: 1; }
 .archmark { font-size: 10px; opacity: .85; }
 .meta .archmark { color: var(--muted); }
+/* Automated origin: a small labelled pill so "what made this" reads at a glance. */
+.automark {
+  font-size: 10px; color: var(--think); border: 1px solid var(--think); border-radius: 4px;
+  padding: 0 4px; white-space: nowrap;
+}
+.meta .automark { font-size: 11px; }
 .branch { color: var(--think); }
 .agentname { color: var(--think); border: 1px solid var(--think); border-radius: 4px; padding: 0 4px; font-size: 10px; }
 .subof { color: var(--think); } .subof a { color: var(--think); text-decoration: underline; cursor: pointer; }
@@ -127,6 +134,9 @@ main { display: flex; flex: 1; min-height: 0; }
 .controls { display: flex; gap: 6px; flex-wrap: wrap; padding: 7px 14px; border-bottom: 1px solid var(--border); }
 .controls label { color: var(--muted); font-size: 11px; display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .controls label.on { color: var(--text); }
+.controls label em { color: var(--faint); font-style: normal; }
+/* Hook group: master "hooks" checkbox + its per-type sub-toggles, boxed together. */
+.hookgroup { display: flex; align-items: center; gap: 6px; padding: 2px 6px; border: 1px solid var(--border); border-radius: var(--rad); }
 .chip {
   background: var(--panel2); border: 1px solid var(--border); color: var(--muted);
   border-radius: 12px; padding: 2px 9px; font-family: var(--mono); font-size: 11px; cursor: pointer;
@@ -154,6 +164,7 @@ mark { background: var(--tool); color: #1a1205; border-radius: 2px; padding: 0 1
 .ev.tool .sig { color: var(--tool); } .ev.user .sig { color: var(--user); }
 .ev.assistant .sig { color: var(--muted); } .ev.think .sig { color: var(--think); }
 .ev.unknown .sig, .ev.summary .sig, .ev.system .sig { color: var(--faint); }
+.ev.hook .sig { color: var(--tool); } .ev.hook .role { color: var(--tool); }
 .body { min-width: 0; }
 .role { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-right: 6px; }
 /* Pinned to the top-right of every turn so cost is always in the same place. */

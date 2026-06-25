@@ -46,6 +46,70 @@ function usageFrom(u: unknown): Usage | undefined {
   return usage;
 }
 
+/** Script basenames from a hook command (paths use ${CLAUDE_PLUGIN_ROOT}); these
+ * identify the actual hook, so we surface them for display + grep. */
+function scriptNames(cmd: string): string {
+  const scripts = cmd.match(/[^/"\s]+\.(?:py|sh|js|ts|mjs|cjs|rb)/g);
+  if (scripts) return [...new Set(scripts)].join(", ");
+  return cmd.slice(0, 60);
+}
+
+/** Summarize a Stop hook-summary system record (carries hookInfos: command,
+ * duration, errors) into a readable, searchable line. */
+function hookSummary(obj: Record<string, unknown>): string {
+  const infos = Array.isArray(obj.hookInfos) ? obj.hookInfos : [];
+  const names: string[] = [];
+  let totalMs = 0;
+  for (const h of infos) {
+    const rec = h && typeof h === "object" ? (h as Record<string, unknown>) : {};
+    if (typeof rec.durationMs === "number") totalMs += rec.durationMs;
+    for (const s of scriptNames(asString(rec.command)).split(", ")) if (s && !names.includes(s)) names.push(s);
+  }
+  const errs = Array.isArray(obj.hookErrors) ? obj.hookErrors : [];
+  const nameStr = names.length ? names.join(", ") : `${infos.length} hook(s)`;
+  let text = `Stop · ${nameStr}${totalMs ? ` (${totalMs}ms)` : ""}`;
+  if (errs.length) text += ` — ${errs.length} error(s)`;
+  return text;
+}
+
+// Attachment subtypes that record a hook firing (the per-event detail Claude
+// stores outside the Stop summary). Mapped to first-class `hook` events.
+const HOOK_ATTACH = new Set([
+  "hook_success",
+  "hook_non_blocking_error",
+  "async_hook_response",
+  "hook_additional_context",
+  "hook_cancelled",
+]);
+
+/** Turn an `attachment` record into an event: a `hook` event for hook attachments
+ * (grouped by hookEvent), else an `unknown` labelled with its subtype. */
+function attachmentEvent(obj: Record<string, unknown>, ts: string | undefined, sidechain: boolean): Event {
+  const att = obj.attachment && typeof obj.attachment === "object" ? (obj.attachment as Record<string, unknown>) : {};
+  const atype = asString(att.type);
+  if (HOOK_ATTACH.has(atype)) {
+    const hookEvent = asString(att.hookEvent) || "hook";
+    const name = asString(att.hookName) || hookEvent;
+    const cmd = att.command != null ? ` · ${scriptNames(asString(att.command))}` : "";
+    const ms = att.durationMs != null && asString(att.durationMs) !== "" ? ` (${asString(att.durationMs)}ms)` : "";
+    let text: string;
+    if (atype === "hook_non_blocking_error") {
+      const err = asString(att.stderr).split("\n").find(Boolean) || `exit ${asString(att.exitCode)}`;
+      text = `✗ ${name}${cmd} — ${err}`;
+    } else if (atype === "hook_cancelled") {
+      text = `⊘ ${name} cancelled`;
+    } else if (atype === "async_hook_response") {
+      text = `⤳ async ${name}`;
+    } else if (atype === "hook_additional_context") {
+      text = `${name} · +context`;
+    } else {
+      text = `${name}${cmd}${ms}`;
+    }
+    return { kind: "hook", ts, hookEvent, text, sidechain, raw: obj };
+  }
+  return { kind: "unknown", ts, text: atype ? `attachment · ${atype}` : "attachment", sidechain, raw: obj };
+}
+
 /** Normalize one transcript line into zero or more events. seenUsage dedups
  * per-message usage across the multiple lines Claude emits for one response. */
 function normalizeLine(obj: Record<string, unknown>, seenUsage: Set<string>): Event[] {
@@ -61,9 +125,15 @@ function normalizeLine(obj: Record<string, unknown>, seenUsage: Set<string>): Ev
 
   const msg = obj.message;
   if (!msg || typeof msg !== "object") {
-    if (typ === "system") {
+    if (typ === "system" && Array.isArray(obj.hookInfos) && obj.hookInfos.length) {
+      // Stop hook summary: hookInfos carries command/duration/errors.
+      events.push({ kind: "hook", ts, hookEvent: "Stop", text: hookSummary(obj), sidechain, raw: obj });
+    } else if (typ === "system") {
       const txt = asString(obj.content) || asString(obj.subtype);
       events.push({ kind: "system", ts, text: txt, sidechain });
+    } else if (typ === "attachment") {
+      // Per-event hook firings + other tool affordances live in attachments.
+      events.push(attachmentEvent(obj, ts, sidechain));
     } else if (typ !== "user" && typ !== "assistant") {
       // Metadata / attachment / hook / file-history etc. — keep, don't drop.
       events.push({ kind: "unknown", ts, text: typ, sidechain, raw: obj });
@@ -196,6 +266,8 @@ async function readSession(path: string): Promise<Session> {
   let started: string | undefined;
   let ended: string | undefined;
   let title: string | undefined;
+  let entrypoint: string | undefined;
+  let sdkPrompt = false; // a user turn submitted programmatically (promptSource "sdk")
   let messages = 0;
   const raw: Event[] = [];
   const seenUsage = new Set<string>();
@@ -205,6 +277,8 @@ async function readSession(path: string): Promise<Session> {
     cwd ??= asString(obj.cwd) || undefined;
     gitBranch ??= asString(obj.gitBranch) || undefined;
     version ??= asString(obj.version) || undefined;
+    entrypoint ??= asString(obj.entrypoint) || undefined;
+    if (asString(obj.promptSource) === "sdk") sdkPrompt = true;
     const ts = asString(obj.timestamp) || undefined;
     if (ts) {
       started ??= ts;
@@ -225,6 +299,10 @@ async function readSession(path: string): Promise<Session> {
   }
 
   const events = mergeToolResults(raw);
+  // Machine-driven sessions: launched via the Agent SDK (entrypoint "sdk-cli"/
+  // "sdk-py"/…) or carrying a programmatically-submitted turn (promptSource
+  // "sdk"). Interactive "cli"/"claude-desktop" turns are promptSource "typed".
+  const automated = (entrypoint != null && entrypoint.startsWith("sdk")) || sdkPrompt;
   const isSubagent = SUBAGENT_RE.test(path);
   const sub = isSubagent ? readSubagentInfo(path) : undefined;
   // For a subagent, the task description is a clearer title than the raw
@@ -251,6 +329,7 @@ async function readSession(path: string): Promise<Session> {
     messages,
     mtime: await mtimeMs(path),
     events,
+    ...(automated ? { automated: true, origin: entrypoint } : {}),
     ...(isSubagent && sub
       ? {
           isSubagent: true,

@@ -4,6 +4,7 @@ import { claudeCodeAdapter } from "../src/core/adapters/claude-code.js";
 import { aggregateUsage } from "../src/core/cost.js";
 
 const fixture = fileURLToPath(new URL("./fixtures/claude-session.jsonl", import.meta.url));
+const hookFixture = fileURLToPath(new URL("./fixtures/claude-hook.jsonl", import.meta.url));
 
 describe("claude-code adapter", () => {
   it("reads metadata and a clean title", async () => {
@@ -23,9 +24,22 @@ describe("claude-code adapter", () => {
     expect(sess.events.some((e) => e.kind === "tool_result")).toBe(false);
   });
 
-  it("surfaces non-core records as unknown", async () => {
+  it("labels attachments by their subtype instead of a bare 'attachment'", async () => {
     const sess = await claudeCodeAdapter().readSession(fixture);
-    expect(sess.events.some((e) => e.kind === "unknown" && e.text === "attachment")).toBe(true);
+    expect(sess.events.some((e) => e.kind === "unknown" && e.text === "attachment · skill_listing")).toBe(true);
+  });
+
+  it("surfaces Stop-summary and per-event hook attachments as hook events", async () => {
+    const sess = await claudeCodeAdapter().readSession(hookFixture);
+    const hooks = sess.events.filter((e) => e.kind === "hook");
+    const byType = new Map(hooks.map((h) => [h.hookEvent, h]));
+    // Stop summary (hookInfos) + PostToolUse success + SessionStart error.
+    expect(byType.get("Stop")?.text).toContain("security_reminder_hook.py");
+    expect(byType.get("Stop")?.text).toContain("33ms");
+    expect(byType.get("PostToolUse")?.text).toContain("PostToolUse:Write");
+    const err = byType.get("SessionStart");
+    expect(err?.text).toContain("✗");
+    expect(err?.text).toContain("semgrep");
   });
 
   it("excludes empty stub sessions (e.g. a lone bridge-session line)", async () => {

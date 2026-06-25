@@ -1,8 +1,10 @@
 // Types mirror src/core/types.ts (kept in sync by hand; the API is the contract).
 export type Agent = "claude-code" | "codex";
-export type ArchivedFilter = "all" | "only" | "none";
+export type TriFilter = "all" | "only" | "none";
+export type ArchivedFilter = TriFilter;
+export type AutomatedFilter = TriFilter;
 export type EventKind =
-  | "text" | "thinking" | "tool_use" | "tool_result" | "summary" | "system" | "unknown";
+  | "text" | "thinking" | "tool_use" | "tool_result" | "summary" | "system" | "hook" | "unknown";
 
 export interface Usage {
   inputTokens: number;
@@ -24,6 +26,7 @@ export interface Event {
   toolUseId?: string;
   input?: unknown;
   result?: { isError: boolean; text: string };
+  hookEvent?: string;
   model?: string;
   usage?: Partial<Usage>;
   raw?: unknown;
@@ -46,6 +49,8 @@ export interface SessionMeta {
   model?: string;
   version?: string;
   archived?: boolean;
+  automated?: boolean;
+  origin?: string;
   isSubagent?: boolean;
   parentId?: string;
   agentName?: string;
@@ -78,6 +83,8 @@ export interface SessionHit {
   ts?: string;
   mtime: number;
   archived?: boolean;
+  automated?: boolean;
+  origin?: string;
   matchCount: number;
   snippet: string;
 }
@@ -93,6 +100,8 @@ export interface Filters {
   mask: boolean;
   /** Treat archived sessions: all (default) | only | none. */
   archived: ArchivedFilter;
+  /** Treat automated (SDK-driven) sessions: all (default) | only | none. */
+  automated: AutomatedFilter;
 }
 
 function qs(params: Record<string, string | string[] | undefined>): string {
@@ -114,7 +123,12 @@ export async function apiFacets(): Promise<{ tools: string[]; cwds: string[] }> 
 export async function apiSessions(f: Partial<Filters>): Promise<SessionMeta[]> {
   const r = await fetch(
     "/api/sessions" +
-      qs({ agent: f.agents?.join(","), project: f.cwd, archived: f.archived && f.archived !== "all" ? f.archived : undefined }),
+      qs({
+        agent: f.agents?.join(","),
+        project: f.cwd,
+        archived: f.archived && f.archived !== "all" ? f.archived : undefined,
+        automated: f.automated && f.automated !== "all" ? f.automated : undefined,
+      }),
   );
   return r.json();
 }
@@ -137,6 +151,7 @@ export async function apiSearch(f: Filters, limit: number): Promise<SessionHit[]
         kind: f.kinds.join(","),
         mask: f.mask ? "1" : "0",
         archived: f.archived && f.archived !== "all" ? f.archived : undefined,
+        automated: f.automated && f.automated !== "all" ? f.automated : undefined,
         limit: String(limit),
       }),
   );

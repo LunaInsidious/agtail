@@ -1,0 +1,2 @@
+{"type":"user","uuid":"au1","timestamp":"2026-06-25T14:15:00.000Z","cwd":"/Users/testuser/proj","gitBranch":"main","version":"2.1.150","entrypoint":"sdk-py","message":{"role":"user","content":"Review this change for security vulnerabilities."}}
+{"type":"assistant","uuid":"aa1","timestamp":"2026-06-25T14:15:02.000Z","cwd":"/Users/testuser/proj","version":"2.1.150","entrypoint":"sdk-py","message":{"model":"claude-opus-4-7","role":"assistant","content":[{"type":"text","text":"No issues found."}]}}

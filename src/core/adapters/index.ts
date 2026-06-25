@@ -1,5 +1,5 @@
-import type { Agent, ArchivedFilter, Session, SessionMeta } from "../types.js";
-import { matchArchived } from "../types.js";
+import type { Agent, ArchivedFilter, AutomatedFilter, Session, SessionMeta } from "../types.js";
+import { matchArchived, matchAutomated } from "../types.js";
 import type { Adapter, RootOverrides } from "./types.js";
 import { claudeCodeAdapter } from "./claude-code.js";
 import { codexAdapter } from "./codex.js";
@@ -25,12 +25,13 @@ export async function findAllSessions(
   agents?: Agent[],
   overrides?: RootOverrides,
   archived?: ArchivedFilter,
+  automated?: AutomatedFilter,
 ): Promise<SessionMeta[]> {
   const adapters = selectAdapters(agents, overrides);
   const lists = await Promise.all(adapters.map((a) => a.findSessions()));
   return lists
     .flat()
-    .filter((m) => matchArchived(m, archived))
+    .filter((m) => matchArchived(m, archived) && matchAutomated(m, automated))
     .sort((a, b) => b.mtime - a.mtime);
 }
 

@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { Agent, ArchivedFilter, EventKind, Session } from "../core/types.js";
+import type { Agent, ArchivedFilter, AutomatedFilter, EventKind, Session } from "../core/types.js";
 import { AGENTS } from "../core/types.js";
 import type { RootOverrides } from "../core/adapters/types.js";
 import { findAllSessions, resolveSession, selectAdapters } from "../core/adapters/index.js";
@@ -21,6 +21,10 @@ function parseAgents(v: string | null): Agent[] | undefined {
 }
 
 function parseArchived(v: string | null): ArchivedFilter {
+  return v === "only" || v === "none" ? v : "all";
+}
+
+function parseAutomated(v: string | null): AutomatedFilter {
   return v === "only" || v === "none" ? v : "all";
 }
 
@@ -74,7 +78,12 @@ export function createApiHandler(opts: ApiOptions = {}) {
 
     try {
       if (url.pathname === "/api/sessions") {
-        const sessions = await findAllSessions(parseAgents(q.get("agent")), ov, parseArchived(q.get("archived")));
+        const sessions = await findAllSessions(
+          parseAgents(q.get("agent")),
+          ov,
+          parseArchived(q.get("archived")),
+          parseAutomated(q.get("automated")),
+        );
         const proj = q.get("project")?.toLowerCase();
         sendJson(200, proj ? sessions.filter((m) => (m.cwd ?? "").toLowerCase().includes(proj)) : sessions);
         return true;
@@ -113,6 +122,7 @@ export function createApiHandler(opts: ApiOptions = {}) {
           until: q.get("until") ?? undefined,
           kinds: (q.get("kind")?.split(",").filter(Boolean) as EventKind[]) || undefined,
           archived: parseArchived(q.get("archived")),
+          automated: parseAutomated(q.get("automated")),
           mask: q.get("mask") === "1" || Boolean(opts.mask),
           limit: q.get("limit") ? Number(q.get("limit")) : defaultLimit,
           overrides: ov,

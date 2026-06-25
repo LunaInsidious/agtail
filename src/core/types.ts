@@ -6,16 +6,23 @@ export type Agent = "claude-code" | "codex";
 
 export const AGENTS: Agent[] = ["claude-code", "codex"];
 
-/** How a listing/search treats archived sessions: include all, only archived,
- *  or exclude archived. Default everywhere is "all". */
-export type ArchivedFilter = "all" | "only" | "none";
+/** A tri-state filter over a boolean session attribute: include all, only the
+ *  ones with it, or exclude them. Default everywhere is "all". */
+export type TriFilter = "all" | "only" | "none";
+export type ArchivedFilter = TriFilter;
+export type AutomatedFilter = TriFilter;
 
-/** Whether a session passes an archived filter (default "all" => everything). */
-export function matchArchived(m: { archived?: boolean }, f?: ArchivedFilter): boolean {
-  if (f === "only") return Boolean(m.archived);
-  if (f === "none") return !m.archived;
+function matchTri(value: boolean | undefined, f?: TriFilter): boolean {
+  if (f === "only") return Boolean(value);
+  if (f === "none") return !value;
   return true;
 }
+
+/** Whether a session passes an archived filter (default "all" => everything). */
+export const matchArchived = (m: { archived?: boolean }, f?: ArchivedFilter) => matchTri(m.archived, f);
+
+/** Whether a session passes an automated filter (default "all" => everything). */
+export const matchAutomated = (m: { automated?: boolean }, f?: AutomatedFilter) => matchTri(m.automated, f);
 
 /** Token usage for one assistant turn (fields optional; agents differ). */
 export interface Usage {
@@ -32,6 +39,7 @@ export type EventKind =
   | "tool_result"
   | "summary"
   | "system"
+  | "hook"
   | "unknown";
 
 /** One normalized timeline event. tool_result is merged into its tool_use. */
@@ -47,6 +55,10 @@ export interface Event {
   toolUseId?: string;
   input?: unknown;
   result?: { isError: boolean; text: string };
+
+  // kind === "hook": the lifecycle event it fired on (SessionStart, PreToolUse,
+  // PostToolUse, Stop, …) — used to group/toggle hooks by type.
+  hookEvent?: string;
 
   // assistant accounting (used by cost aggregation)
   model?: string;
@@ -75,6 +87,15 @@ export interface SessionMeta {
   // to archived_sessions/). Orthogonal to agent — an archived session is still a
   // normal codex session, just out of the agent's active resume picker.
   archived?: boolean;
+
+  // Machine-driven session (launched via the Agent SDK rather than the
+  // interactive CLI/TUI) — hooks, scripts, headless review agents. Lets the UI
+  // de-emphasize/filter automated noise from a human-history view.
+  automated?: boolean;
+  // The raw launch identifier behind `automated`, for a human-readable label:
+  // Claude's entrypoint ("sdk-py"/"sdk-ts") or Codex's originator. The
+  // transcript records HOW it was launched, not which specific tool/plugin.
+  origin?: string;
 
   // Subagent (sidechain) linkage. A subagent transcript is a child of the
   // session that spawned it via a Task tool call.
@@ -113,6 +134,8 @@ export interface SessionHit {
   ts?: string; // last event time, for display
   mtime: number;
   archived?: boolean;
+  automated?: boolean;
+  origin?: string;
   matchCount: number;
   snippet: string; // first matching event's snippet
 }

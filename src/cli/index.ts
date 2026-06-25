@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { homedir } from "node:os";
-import type { Agent, ArchivedFilter, EventKind } from "../core/types.js";
+import type { Agent, ArchivedFilter, AutomatedFilter, EventKind, TriFilter } from "../core/types.js";
 import { AGENTS } from "../core/types.js";
 import type { RootOverrides } from "../core/adapters/types.js";
 import { findAllSessions, resolveSession } from "../core/adapters/index.js";
@@ -19,18 +19,20 @@ interface GlobalOpts {
   codexDir?: string;
   mask?: boolean;
   archived?: string; // "all" (default) | "only" | "none"
+  automated?: string; // "all" (default) | "only" | "none"
 }
 
-// Archived sessions are included by default; --archived only|none narrows them.
-function archivedFilter(o: GlobalOpts): ArchivedFilter {
-  const v = o.archived;
+// Included by default; only|none narrows. Shared by --archived / --automated.
+function triFilter(flag: string, v: string | undefined): TriFilter {
   if (v === "only" || v === "none") return v;
   if (v != null && v !== "all") {
-    console.error(`--archived must be one of: all, only, none (got: ${v})`);
+    console.error(`${flag} must be one of: all, only, none (got: ${v})`);
     process.exit(2);
   }
   return "all";
 }
+const archivedFilter = (o: GlobalOpts): ArchivedFilter => triFilter("--archived", o.archived);
+const automatedFilter = (o: GlobalOpts): AutomatedFilter => triFilter("--automated", o.automated);
 
 function overrides(o: GlobalOpts): RootOverrides {
   const ov: RootOverrides = {};
@@ -66,6 +68,7 @@ async function cmdGrep(pattern: string | undefined, opts: any, global: GlobalOpt
     until: opts.until,
     kinds: opts.kind ? (opts.kind.split(",") as EventKind[]) : undefined,
     archived: archivedFilter(global),
+    automated: automatedFilter(global),
     mask: global.mask,
     limit: opts.limit ? Number(opts.limit) : undefined,
     overrides: overrides(global),
@@ -93,7 +96,7 @@ async function cmdGrep(pattern: string | undefined, opts: any, global: GlobalOpt
 
 // --- list --------------------------------------------------------------------
 async function cmdList(opts: any, global: GlobalOpts) {
-  const all = await findAllSessions(parseAgents(opts.agent), overrides(global), archivedFilter(global));
+  const all = await findAllSessions(parseAgents(opts.agent), overrides(global), archivedFilter(global), automatedFilter(global));
   const proj = opts.project?.toLowerCase();
   const pass = (m: (typeof all)[number]) =>
     (!proj || (m.cwd ?? "").toLowerCase().includes(proj)) &&
@@ -116,7 +119,9 @@ async function cmdList(opts: any, global: GlobalOpts) {
     const sid = color(m.id.slice(0, 8), "amber");
     const when = color(shortTs(m.ended), "gray");
     const name = m.isSubagent && m.agentName ? color(`[${m.agentName}] `, "violet") : "";
-    const arch = m.archived ? color("🗄 archived ", "dim") : "";
+    const arch =
+      (m.archived ? color("🗄 archived ", "dim") : "") +
+      (m.automated ? color(`🤖 ${m.origin ?? "automated"} `, "dim") : "");
     console.log(
       `${lead}${tag} ${sid}  ${when}  ${color(String(m.messages).padStart(4), "dim")} ev  ${color(tilde(m.cwd), "cyan")}`,
     );
@@ -143,7 +148,11 @@ async function cmdShow(id: string, opts: any, global: GlobalOpts) {
   const sess = await resolveSession(id, parseAgents(opts.agent), overrides(global));
   if (!sess) return console.log("no matching session:", id);
   const doMask = Boolean(global.mask);
-  console.log(color(`${agentTag(sess.agent)} · ${sess.id}`, "bold") + (sess.archived ? color("  🗄 archived", "dim") : ""));
+  console.log(
+    color(`${agentTag(sess.agent)} · ${sess.id}`, "bold") +
+      (sess.archived ? color("  🗄 archived", "dim") : "") +
+      (sess.automated ? color(`  🤖 ${sess.origin ?? "automated"}`, "dim") : ""),
+  );
   if (sess.isSubagent) {
     console.log(color(`  ↳ subagent (${sess.agentName ?? "?"}) of ${sess.parentId}`, "violet"));
   }
@@ -176,6 +185,8 @@ async function cmdShow(id: string, opts: any, global: GlobalOpts) {
       console.log(`${ts} ${sc}${color(displayRole(e), who as any)}: ${body.slice(0, 1000)}${usageBadge(e)}`);
     } else if (e.kind === "thinking") {
       console.log(`${ts} ${sc}${color("thinking", "violet")} ${color((e.text ?? "").slice(0, 120).replace(/\n/g, " "), "dim")}`);
+    } else if (e.kind === "hook") {
+      console.log(`${ts} ${sc}${color("🪝 " + (e.text ?? ""), "amber")}`);
     } else if (e.kind === "summary") {
       console.log(`${ts} ${color("— " + (e.text ?? ""), "gray")}`);
     } else if (e.kind === "system") {
@@ -193,7 +204,7 @@ async function cmdStats(id: string | undefined, opts: any, global: GlobalOpts) {
   const sessions = id
     ? [await resolveSession(id, agents, ov)].filter(Boolean)
     : await Promise.all(
-        (await findAllSessions(agents, ov, archivedFilter(global)))
+        (await findAllSessions(agents, ov, archivedFilter(global), automatedFilter(global)))
           .filter((m) => !opts.project || (m.cwd ?? "").toLowerCase().includes(opts.project.toLowerCase()))
           .map((m) => resolveSession(m.id, [m.agent], ov)),
       );
@@ -243,6 +254,7 @@ program
   .option("--claude-dir <path>", "override Claude Code root (~/.claude/projects)")
   .option("--codex-dir <path>", "override Codex sessions root (~/.codex/sessions)")
   .option("--archived <mode>", "archived sessions: all (default) | only | none", "all")
+  .option("--automated <mode>", "automated (SDK-driven) sessions: all (default) | only | none", "all")
   .option("--mask", "redact secrets in output");
 
 const g = (): GlobalOpts => program.opts();

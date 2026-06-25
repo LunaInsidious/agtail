@@ -52,6 +52,8 @@ interface Parsed {
   started?: string;
   ended?: string;
   title?: string;
+  automated?: boolean;
+  origin?: string;
 }
 
 async function parse(path: string): Promise<Parsed> {
@@ -73,6 +75,14 @@ async function parse(path: string): Promise<Parsed> {
       out.id ??= asString(p.session_id) || asString(p.id) || undefined;
       out.cwd ??= asString(p.cwd) || undefined;
       out.version ??= asString(p.cli_version) || undefined;
+      // Interactive Codex runs as the TUI (originator "codex-tui"). Anything else
+      // (SDK / `codex exec` / scripted) is machine-driven. NOTE: inferred from the
+      // interactive baseline — verify the exact originator for SDK/exec runs.
+      const originator = asString(p.originator);
+      if (originator && originator !== "codex-tui") {
+        out.automated = true;
+        out.origin = originator;
+      }
       continue;
     }
     if (type === "turn_context") {
@@ -193,6 +203,7 @@ async function readSession(path: string): Promise<Session> {
     messages: parsed.events.length,
     mtime: await mtimeMs(path),
     events: parsed.events,
+    ...(parsed.automated ? { automated: true, origin: parsed.origin } : {}),
   };
 }
 

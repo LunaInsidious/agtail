@@ -17,6 +17,22 @@ import {
 // Search context carried from a hit into the opened session's in-view search.
 type Seed = { find: string; tool?: string };
 
+// Human-readable label for an automated session's launch origin (Claude's
+// entrypoint or Codex's originator), so "what is this?" is answerable at a glance.
+function originLabel(origin?: string): string {
+  if (!origin) return "automated";
+  const o = origin.toLowerCase();
+  if (o.startsWith("sdk")) {
+    if (o.includes("py")) return "Agent SDK (Python)";
+    if (o.includes("ts") || o.includes("node") || o.includes("js")) return "Agent SDK (TypeScript)";
+    if (o.includes("cli")) return "Agent SDK (CLI)";
+    return "Agent SDK";
+  }
+  return origin; // e.g. a Codex originator name
+}
+const AUTOMATED_TIP =
+  "Automated session — launched programmatically via the Agent SDK (a hook, plugin, or script), not typed by a person.";
+
 const homeShort = (p: string) => p.replace(/^\/Users\/[^/]+/, "~").replace(/^\/home\/[^/]+/, "~");
 
 // Search result cap (matching events). User-selectable; 0 means no limit ("All").
@@ -51,6 +67,7 @@ const emptyFilters: Filters = {
   kinds: [],
   mask: false,
   archived: "all",
+  automated: "all",
 };
 
 export function App() {
@@ -74,6 +91,15 @@ export function App() {
     if (k === "active") active = !active;
     else archived = !archived;
     set({ archived: active && !archived ? "none" : archived && !active ? "only" : "all" });
+  };
+
+  // Origin filter (human vs automated), same none/both = all idiom.
+  const toggleOrigin = (k: "human" | "automated") => {
+    let human = filters.automated === "none";
+    let automated = filters.automated === "only";
+    if (k === "human") human = !human;
+    else automated = !automated;
+    set({ automated: human && !automated ? "none" : automated && !human ? "only" : "all" });
   };
 
   // Close the filter popover on outside click. The ref wraps button + popover so
@@ -104,10 +130,16 @@ export function App() {
       label: filters.archived === "only" ? "🗄 archived" : "active only",
       onRemove: () => set({ archived: "all" }),
     });
+  if (filters.automated !== "all")
+    chips.push({
+      key: "origin",
+      label: filters.automated === "only" ? "🤖 automated" : "human only",
+      onRemove: () => set({ automated: "all" }),
+    });
   if (filters.mask) chips.push({ key: "mask", label: "🔒 mask", onRemove: () => set({ mask: false }) });
 
   const clearAll = () =>
-    set({ agents: [], tools: [], cwd: "", since: "", until: "", archived: "all", mask: false });
+    set({ agents: [], tools: [], cwd: "", since: "", until: "", archived: "all", automated: "all", mask: false });
 
   // Hits are matching sessions. With a finite cap, reaching it means more
   // sessions matched than were returned; "All" (limit 0) never truncates.
@@ -137,9 +169,11 @@ export function App() {
   };
 
   useEffect(() => {
-    apiSessions({ agents: filters.agents, cwd: filters.cwd, archived: filters.archived }).then(setSessions);
+    apiSessions({ agents: filters.agents, cwd: filters.cwd, archived: filters.archived, automated: filters.automated }).then(
+      setSessions,
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.agents.join(","), filters.cwd, filters.archived]);
+  }, [filters.agents.join(","), filters.cwd, filters.archived, filters.automated]);
 
   useEffect(() => {
     apiFacets().then(setFacets);
@@ -259,6 +293,19 @@ export function App() {
                 </span>
               </div>
               <div className="frow">
+                <span className="lbl">origin</span>
+                <span className="agents">
+                  <label className={filters.automated === "none" ? "on" : ""}>
+                    <input type="checkbox" checked={filters.automated === "none"} onChange={() => toggleOrigin("human")} />
+                    human
+                  </label>
+                  <label className={filters.automated === "only" ? "on" : ""}>
+                    <input type="checkbox" checked={filters.automated === "only"} onChange={() => toggleOrigin("automated")} />
+                    🤖 automated
+                  </label>
+                </span>
+              </div>
+              <div className="frow">
                 <span className="lbl">output</span>
                 <label className="mask">
                   <input type="checkbox" checked={filters.mask} onChange={(e) => set({ mask: e.target.checked })} />
@@ -350,13 +397,23 @@ function SessionRow({
 }) {
   return (
     <div
-      className={"sess" + (child ? " child" : "") + (s.archived ? " archived" : "") + (cur && cur.id === s.id ? " active" : "")}
+      className={
+        "sess" +
+        (child ? " child" : "") +
+        (s.archived || s.automated ? " dim" : "") +
+        (cur && cur.id === s.id ? " active" : "")
+      }
       onClick={() => onOpen(s.agent, s.id)}
     >
       <div className="row1">
         {child && <span className="branch">↳</span>}
         <span className={"src " + s.agent}>{tag(s.agent)}</span>
         {s.archived && <span className="archmark" title="archived">🗄</span>}
+        {s.automated && (
+          <span className="automark" title={AUTOMATED_TIP}>
+            🤖 {originLabel(s.origin)}
+          </span>
+        )}
         {s.isSubagent && s.agentName && <span className="agentname">{s.agentName}</span>}
         <span className="sid">{s.id.slice(0, 8)}</span>
         <span>{fmtTs(s.ended)}</span>
@@ -434,12 +491,17 @@ function HitList({
       {hits.map((m) => (
         <div
           key={m.agent + m.sessionId}
-          className={"hit" + (m.archived ? " archived" : "")}
+          className={"hit" + (m.archived || m.automated ? " dim" : "")}
           onClick={() => onOpen(m.agent, m.sessionId, seed)}
         >
           <div className="row1">
             <span className={"src " + m.agent}>{tag(m.agent)}</span>
             {m.archived && <span className="archmark" title="archived">🗄</span>}
+            {m.automated && (
+              <span className="automark" title={AUTOMATED_TIP}>
+                🤖 {originLabel(m.origin)}
+              </span>
+            )}
             <span className="sid">{m.sessionId.slice(0, 8)}</span>
             <span>{fmtTs(m.ts)}</span>
             <span className="matchn" title="matching events">{m.matchCount} match{m.matchCount === 1 ? "" : "es"}</span>
@@ -495,6 +557,8 @@ function Timeline({
   const [toolFilter, setToolFilter] = useState<Set<string>>(() => seedTools(seed));
   const [showThinking, setShowThinking] = useState(true);
   const [showMeta, setShowMeta] = useState(false);
+  const [showHooks, setShowHooks] = useState(true); // master toggle for all hooks
+  const [hookFocus, setHookFocus] = useState<Set<string>>(new Set()); // focus hook types (empty = all), like tools
   const [find, setFind] = useState(seed.find);
   // Text find is non-destructive by default (highlight + jump); "matches only"
   // collapses the timeline to just the matching events.
@@ -527,8 +591,22 @@ function Timeline({
 
   // Events left after the explicit subsetting filters (thinking/meta/tool). The
   // text find does NOT subset here — it highlights + navigates over this set.
+  // Distinct hook lifecycle types present, for per-type show/hide (like tools).
+  const hookTypes = useMemo(() => {
+    const c = new Map<string, number>();
+    for (const e of session.events) if (e.kind === "hook") c.set(e.hookEvent ?? "hook", (c.get(e.hookEvent ?? "hook") ?? 0) + 1);
+    return [...c.entries()].sort((a, b) => b[1] - a[1]);
+  }, [session]);
+  const toggleHook = (t: string) =>
+    setHookFocus((s) => {
+      const n = new Set(s);
+      n.has(t) ? n.delete(t) : n.add(t);
+      return n;
+    });
+
   const base = session.events.filter((e) => {
     if (e.kind === "thinking" && !showThinking) return false;
+    if (e.kind === "hook" && (!showHooks || (hookFocus.size > 0 && !hookFocus.has(e.hookEvent ?? "hook")))) return false;
     if ((e.kind === "system" || e.kind === "unknown" || e.kind === "summary") && !showMeta) return false;
     if (toolFilter.size && !(e.kind === "tool_use" && e.tool && toolFilter.has(e.tool))) return false;
     return true;
@@ -543,7 +621,10 @@ function Timeline({
 
   // Reset to the first match when the query or the visible set changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => setActiveMatch(0), [needle, matchesOnly, showThinking, showMeta, toolFilter, session.id]);
+  useEffect(
+    () => setActiveMatch(0),
+    [needle, matchesOnly, showThinking, showMeta, showHooks, hookFocus, toolFilter, session.id],
+  );
   // Scroll the active match into view as it changes.
   useEffect(() => {
     const target = matchIdxs[cur];
@@ -557,6 +638,11 @@ function Timeline({
       <div className="meta">
         <span className={"src " + session.agent}>{tag(session.agent)}</span>
         {session.archived && <span className="archmark" title="archived">🗄 archived</span>}
+        {session.automated && (
+          <span className="automark" title={AUTOMATED_TIP}>
+            🤖 {originLabel(session.origin)}
+          </span>
+        )}
         {session.isSubagent && (
           <span className="subof">
             ↳ subagent{session.agentName ? ` (${session.agentName})` : ""} of{" "}
@@ -610,6 +696,24 @@ function Timeline({
         <label className={showMeta ? "on" : ""}>
           <input type="checkbox" checked={showMeta} onChange={(e) => setShowMeta(e.target.checked)} /> system/meta
         </label>
+        {hookTypes.length > 0 && (
+          <span className="hookgroup">
+            <label className={showHooks ? "on" : ""} title="show/hide all hooks">
+              <input type="checkbox" checked={showHooks} onChange={(e) => setShowHooks(e.target.checked)} /> 🪝 hooks
+            </label>
+            {showHooks &&
+              hookTypes.map(([t, n]) => (
+                <button
+                  key={"hook:" + t}
+                  className={"chip" + (hookFocus.has(t) ? " on" : "")}
+                  onClick={() => toggleHook(t)}
+                  title="show only this hook type"
+                >
+                  {t} <em>{n}</em>
+                </button>
+              ))}
+          </span>
+        )}
         {tools.map(([t, n]) => (
           <button key={t} className={"chip" + (toolFilter.has(t) ? " on" : "")} onClick={() => toggle(t)}>
             {t} <em>{n}</em>
@@ -683,13 +787,15 @@ function EventRow({ e, highlight }: { e: Event; highlight?: string }) {
       </div>
     );
   }
+  if (e.kind === "hook") return <HookRow e={e} highlight={highlight} />;
   if (e.kind === "unknown") {
+    // Don't force-collapse: short raw shows inline, "Show all" only when long.
     return (
       <div className="ev unknown">
         <div className="sig">?</div>
         <div className="body">
           <span className="role">unknown · {e.text}</span>
-          <Collapsible text={pretty(e.raw)} collapsed highlight={highlight} />
+          <Collapsible text={pretty(e.raw)} highlight={highlight} />
         </div>
       </div>
     );
@@ -748,6 +854,38 @@ function ToolHead({ e, highlight }: { e: Event; highlight?: string }) {
         </div>
       )}
     </>
+  );
+}
+
+// Hook firing: a collapsed command-only line by default; click to reveal the
+// full raw record. Mirrors the tool row's expand pattern (caret + detail).
+function HookRow({ e, highlight }: { e: Event; highlight?: string }) {
+  const rawStr = pretty(e.raw);
+  const matchesDetail = !!highlight && rawStr.toLowerCase().includes(highlight.toLowerCase());
+  const [open, setOpen] = useState(matchesDetail);
+  useEffect(() => setOpen(matchesDetail), [matchesDetail]);
+  return (
+    <div className="ev hook">
+      <div className="sig">🪝</div>
+      <div className="body">
+        <div className={"toolhead" + (open ? " open" : "")} onClick={() => setOpen((o) => !o)}>
+          <span className="caret">{open ? "▾" : "▸"}</span>
+          <span className="role">hook</span>
+          <span className="sum">
+            <Highlighted text={e.text ?? ""} term={highlight} />
+          </span>
+        </div>
+        {open && (
+          <div className="detail">
+            <div className="seg">
+              <pre>
+                <Highlighted text={rawStr} term={highlight} />
+              </pre>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
