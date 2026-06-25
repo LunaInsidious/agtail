@@ -1,4 +1,5 @@
-import type { Agent, Event, EventKind, Match, Session } from "./types.js";
+import type { Agent, ArchivedFilter, Event, EventKind, Match, Session, SessionHit } from "./types.js";
+import { matchArchived } from "./types.js";
 import type { RootOverrides } from "./adapters/types.js";
 import { findAllSessions, selectAdapters } from "./adapters/index.js";
 import { toolSearchText } from "./format.js";
@@ -22,6 +23,8 @@ export interface SearchFilters {
   /** Restrict to these event kinds. */
   kinds?: EventKind[];
   mask?: boolean;
+  /** Treat archived sessions: include all (default), only, or exclude. */
+  archived?: ArchivedFilter;
   /** Stop after this many matches (0/undefined = no limit). */
   limit?: number;
   overrides?: RootOverrides;
@@ -69,23 +72,63 @@ function inRange(ts: string | undefined, since?: string, until?: string): boolea
   return true;
 }
 
-/** Stream matches across the selected agents' sessions. */
+// Compiled filter state, shared by event-level and session-level search.
+interface MatchCtx {
+  re: RegExp | null;
+  toolRes: RegExp[] | null;
+  kinds: Set<EventKind> | null;
+  since?: string;
+  until?: string;
+  cwdNeedle?: string;
+  doMask: boolean;
+}
+
+function buildCtx(f: SearchFilters): MatchCtx {
+  return {
+    re: compilePattern(f),
+    // Empty arrays mean "no filter" (an empty [] is truthy — guard explicitly).
+    toolRes: f.tools && f.tools.length ? f.tools.map(globToRegExp) : null,
+    kinds: f.kinds && f.kinds.length ? new Set(f.kinds) : null,
+    since: f.since,
+    // A date-only `until` should include the whole day, not stop at 00:00:00.
+    until: f.until && /^\d{4}-\d{2}-\d{2}$/.test(f.until) ? f.until + "T23:59:59.999Z" : f.until,
+    cwdNeedle: f.cwd?.toLowerCase(),
+    doMask: Boolean(f.mask),
+  };
+}
+
+/** If the event passes all filters, return its searchable text (for snippeting);
+ *  otherwise null. */
+function matchHay(e: Event, ctx: MatchCtx): string | null {
+  if (ctx.toolRes) {
+    if (e.kind !== "tool_use" || !e.tool) return null;
+    if (!ctx.toolRes.some((r) => r.test(e.tool!))) return null;
+  }
+  if (ctx.kinds && !ctx.kinds.has(e.kind)) return null;
+  if (!inRange(e.ts, ctx.since, ctx.until)) return null;
+  const hay = searchableText(e);
+  if (ctx.re) {
+    ctx.re.lastIndex = 0;
+    if (!ctx.re.test(hay)) return null;
+  } else if (!hay && e.kind !== "tool_use") {
+    return null;
+  }
+  return hay;
+}
+
+const cwdMatches = (cwd: string | undefined, needle?: string) =>
+  !needle || (cwd ?? "").toLowerCase().includes(needle);
+
+/** Stream event-level matches across the selected agents' sessions. */
 export async function* searchSessions(f: SearchFilters): AsyncGenerator<Match> {
-  const re = compilePattern(f);
-  // Empty arrays mean "no filter" (an empty [] is truthy — guard explicitly).
-  const toolRes = f.tools && f.tools.length ? f.tools.map(globToRegExp) : null;
-  const kinds = f.kinds && f.kinds.length ? new Set(f.kinds) : null;
-  const cwdNeedle = f.cwd?.toLowerCase();
-  const doMask = Boolean(f.mask);
-  // A date-only `until` should include the whole day, not stop at 00:00:00.
-  const until = f.until && /^\d{4}-\d{2}-\d{2}$/.test(f.until) ? f.until + "T23:59:59.999Z" : f.until;
+  const ctx = buildCtx(f);
   let count = 0;
 
-  const adapters = selectAdapters(f.agents, f.overrides);
-  for (const adapter of adapters) {
+  for (const adapter of selectAdapters(f.agents, f.overrides)) {
     const metas = (await adapter.findSessions()).sort((a, b) => b.mtime - a.mtime);
     for (const meta of metas) {
-      if (cwdNeedle && !(meta.cwd ?? "").toLowerCase().includes(cwdNeedle)) continue;
+      if (!matchArchived(meta, f.archived)) continue;
+      if (!cwdMatches(meta.cwd, ctx.cwdNeedle)) continue;
       let session: Session;
       try {
         session = await adapter.readSession(meta.path);
@@ -93,19 +136,8 @@ export async function* searchSessions(f: SearchFilters): AsyncGenerator<Match> {
         continue;
       }
       for (const e of session.events) {
-        if (toolRes) {
-          if (e.kind !== "tool_use" || !e.tool) continue;
-          if (!toolRes.some((r) => r.test(e.tool!))) continue;
-        }
-        if (kinds && !kinds.has(e.kind)) continue;
-        if (!inRange(e.ts, f.since, until)) continue;
-        const hay = searchableText(e);
-        if (re) {
-          re.lastIndex = 0;
-          if (!re.test(hay)) continue;
-        } else if (!hay && e.kind !== "tool_use") {
-          continue;
-        }
+        const hay = matchHay(e, ctx);
+        if (hay === null) continue;
         yield {
           agent: session.agent,
           sessionId: session.id,
@@ -114,7 +146,8 @@ export async function* searchSessions(f: SearchFilters): AsyncGenerator<Match> {
           kind: e.kind,
           tool: e.tool,
           cwd: session.cwd,
-          snippet: snippet(hay || (e.tool ?? ""), re, doMask),
+          archived: meta.archived,
+          snippet: snippet(hay || (e.tool ?? ""), ctx.re, ctx.doMask),
         };
         if (f.limit && ++count >= f.limit) return;
       }
@@ -122,10 +155,54 @@ export async function* searchSessions(f: SearchFilters): AsyncGenerator<Match> {
   }
 }
 
-/** Collect all matches into an array. */
+/** Collect all event-level matches into an array. */
 export async function search(f: SearchFilters): Promise<Match[]> {
   const out: Match[] = [];
   for await (const m of searchSessions(f)) out.push(m);
+  return out;
+}
+
+/** Session-level search: one entry per matching session, with a representative
+ *  snippet and match count. `limit` bounds the number of sessions returned. */
+export async function searchSessionHits(f: SearchFilters): Promise<SessionHit[]> {
+  const ctx = buildCtx(f);
+  const out: SessionHit[] = [];
+
+  for (const adapter of selectAdapters(f.agents, f.overrides)) {
+    const metas = (await adapter.findSessions()).sort((a, b) => b.mtime - a.mtime);
+    for (const meta of metas) {
+      if (!matchArchived(meta, f.archived)) continue;
+      if (!cwdMatches(meta.cwd, ctx.cwdNeedle)) continue;
+      let session: Session;
+      try {
+        session = await adapter.readSession(meta.path);
+      } catch {
+        continue;
+      }
+      let matchCount = 0;
+      let firstSnippet = "";
+      for (const e of session.events) {
+        const hay = matchHay(e, ctx);
+        if (hay === null) continue;
+        if (matchCount === 0) firstSnippet = snippet(hay || (e.tool ?? ""), ctx.re, ctx.doMask);
+        matchCount++;
+      }
+      if (matchCount === 0) continue;
+      out.push({
+        agent: session.agent,
+        sessionId: session.id,
+        path: session.path,
+        cwd: session.cwd,
+        title: ctx.doMask ? mask(session.title, true) : session.title,
+        ts: session.ended,
+        mtime: session.mtime,
+        archived: meta.archived,
+        matchCount,
+        snippet: firstSnippet,
+      });
+      if (f.limit && out.length >= f.limit) return out;
+    }
+  }
   return out;
 }
 

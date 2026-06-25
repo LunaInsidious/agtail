@@ -6,6 +6,17 @@ export type Agent = "claude-code" | "codex";
 
 export const AGENTS: Agent[] = ["claude-code", "codex"];
 
+/** How a listing/search treats archived sessions: include all, only archived,
+ *  or exclude archived. Default everywhere is "all". */
+export type ArchivedFilter = "all" | "only" | "none";
+
+/** Whether a session passes an archived filter (default "all" => everything). */
+export function matchArchived(m: { archived?: boolean }, f?: ArchivedFilter): boolean {
+  if (f === "only") return Boolean(m.archived);
+  if (f === "none") return !m.archived;
+  return true;
+}
+
 /** Token usage for one assistant turn (fields optional; agents differ). */
 export interface Usage {
   inputTokens?: number;
@@ -60,6 +71,11 @@ export interface SessionMeta {
   model?: string;
   version?: string;
 
+  // True when the agent has set this session aside (Codex moves finished threads
+  // to archived_sessions/). Orthogonal to agent — an archived session is still a
+  // normal codex session, just out of the agent's active resume picker.
+  archived?: boolean;
+
   // Subagent (sidechain) linkage. A subagent transcript is a child of the
   // session that spawned it via a Task tool call.
   isSubagent?: boolean;
@@ -82,5 +98,21 @@ export interface Match {
   kind: EventKind;
   tool?: string;
   cwd?: string;
+  archived?: boolean;
   snippet: string;
+}
+
+/** A search result grouped to one entry per matching session (for the web Hits
+ *  list). Carries a representative snippet + how many events matched. */
+export interface SessionHit {
+  agent: Agent;
+  sessionId: string;
+  path: string;
+  cwd?: string;
+  title: string;
+  ts?: string; // last event time, for display
+  mtime: number;
+  archived?: boolean;
+  matchCount: number;
+  snippet: string; // first matching event's snippet
 }
