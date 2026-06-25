@@ -8,7 +8,7 @@ const fixture = fileURLToPath(new URL("./fixtures/claude-session.jsonl", import.
 describe("claude-code adapter", () => {
   it("reads metadata and a clean title", async () => {
     const sess = await claudeCodeAdapter().readSession(fixture);
-    expect(sess.cwd).toBe("/Users/itsuki_t/proj");
+    expect(sess.cwd).toBe("/Users/testuser/proj");
     expect(sess.gitBranch).toBe("main");
     expect(sess.model).toBe("claude-opus-4-8");
     expect(sess.title).toBe("please grep for blogsync");

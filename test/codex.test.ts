@@ -8,7 +8,7 @@ describe("codex adapter", () => {
   it("normalizes the event_msg stream (not response_item noise)", async () => {
     const sess = await codexAdapter().readSession(fixture);
     expect(sess.agent).toBe("codex");
-    expect(sess.cwd).toBe("/Users/itsuki_t/proj");
+    expect(sess.cwd).toBe("/Users/testuser/proj");
     expect(sess.model).toBe("gpt-5.5");
     expect(sess.version).toBe("0.142.0");
     expect(sess.title).toBe("run the build for blogsync");
@@ -26,7 +26,7 @@ describe("codex adapter", () => {
     const exec = sess.events.find((e) => e.kind === "tool_use" && e.tool === "exec");
     expect(exec).toBeDefined();
     expect((exec!.input as any).command).toBe("npm run build");
-    expect((exec!.input as any).cwd).toBe("/Users/itsuki_t/proj");
+    expect((exec!.input as any).cwd).toBe("/Users/testuser/proj");
     expect(exec!.result?.isError).toBe(false);
     expect(exec!.result?.text).toContain("build ok");
   });
