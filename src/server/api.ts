@@ -1,9 +1,9 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { Agent, EventKind, Session } from "../core/types.js";
+import type { Agent, ArchivedFilter, EventKind, Session } from "../core/types.js";
 import { AGENTS } from "../core/types.js";
 import type { RootOverrides } from "../core/adapters/types.js";
 import { findAllSessions, resolveSession, selectAdapters } from "../core/adapters/index.js";
-import { search } from "../core/search.js";
+import { searchSessionHits } from "../core/search.js";
 import { aggregateUsage, costForModel, usageSum } from "../core/cost.js";
 import { loadPriceResolver } from "../core/pricing.js";
 import { mask as maskText, maskValue } from "../core/mask.js";
@@ -18,6 +18,10 @@ function parseAgents(v: string | null): Agent[] | undefined {
   if (!v) return undefined;
   const items = v.split(",").map((s) => s.trim()).filter((s) => AGENTS.includes(s as Agent));
   return items.length ? (items as Agent[]) : undefined;
+}
+
+function parseArchived(v: string | null): ArchivedFilter {
+  return v === "only" || v === "none" ? v : "all";
 }
 
 function maskSession(s: Session): Session {
@@ -70,7 +74,7 @@ export function createApiHandler(opts: ApiOptions = {}) {
 
     try {
       if (url.pathname === "/api/sessions") {
-        const sessions = await findAllSessions(parseAgents(q.get("agent")), ov);
+        const sessions = await findAllSessions(parseAgents(q.get("agent")), ov, parseArchived(q.get("archived")));
         const proj = q.get("project")?.toLowerCase();
         sendJson(200, proj ? sessions.filter((m) => (m.cwd ?? "").toLowerCase().includes(proj)) : sessions);
         return true;
@@ -98,7 +102,7 @@ export function createApiHandler(opts: ApiOptions = {}) {
         return true;
       }
       if (url.pathname === "/api/search") {
-        const matches = await search({
+        const matches = await searchSessionHits({
           pattern: q.get("q") ?? undefined,
           regex: q.get("regex") === "1",
           ignoreCase: q.get("case") !== "1",
@@ -108,6 +112,7 @@ export function createApiHandler(opts: ApiOptions = {}) {
           since: q.get("since") ?? undefined,
           until: q.get("until") ?? undefined,
           kinds: (q.get("kind")?.split(",").filter(Boolean) as EventKind[]) || undefined,
+          archived: parseArchived(q.get("archived")),
           mask: q.get("mask") === "1" || Boolean(opts.mask),
           limit: q.get("limit") ? Number(q.get("limit")) : defaultLimit,
           overrides: ov,
