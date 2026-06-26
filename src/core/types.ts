@@ -80,7 +80,11 @@ export interface SessionMeta {
   ended?: string;
   mtime: number; // ms epoch, for sorting
   gitBranch?: string;
+  // Primary (first-seen) model, kept for back-compat. `models` is the full set.
   model?: string;
+  // Distinct models the session used, in first-seen order. More than one means
+  // the model was switched mid-session; the header shows them joined with "→".
+  models?: string[];
   version?: string;
 
   // True when the agent has set this session aside (Codex moves finished threads
@@ -133,6 +137,7 @@ export interface SessionHit {
   title: string;
   ts?: string; // last event time, for display
   mtime: number;
+  models?: string[];
   archived?: boolean;
   automated?: boolean;
   origin?: string;

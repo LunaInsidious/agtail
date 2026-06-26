@@ -47,6 +47,7 @@ export interface SessionMeta {
   mtime: number;
   gitBranch?: string;
   model?: string;
+  models?: string[];
   version?: string;
   archived?: boolean;
   automated?: boolean;
@@ -82,6 +83,7 @@ export interface SessionHit {
   title: string;
   ts?: string;
   mtime: number;
+  models?: string[];
   archived?: boolean;
   automated?: boolean;
   origin?: string;
@@ -93,6 +95,7 @@ export interface Filters {
   q: string;
   agents: Agent[];
   tools: string[];
+  models: string[];
   cwd: string;
   since: string;
   until: string;
@@ -115,7 +118,7 @@ function qs(params: Record<string, string | string[] | undefined>): string {
   return s ? "?" + s : "";
 }
 
-export async function apiFacets(): Promise<{ tools: string[]; cwds: string[] }> {
+export async function apiFacets(): Promise<{ tools: string[]; cwds: string[]; models: string[] }> {
   const r = await fetch("/api/facets");
   return r.json();
 }
@@ -126,6 +129,7 @@ export async function apiSessions(f: Partial<Filters>): Promise<SessionMeta[]> {
       qs({
         agent: f.agents?.join(","),
         project: f.cwd,
+        model: f.models,
         archived: f.archived && f.archived !== "all" ? f.archived : undefined,
         automated: f.automated && f.automated !== "all" ? f.automated : undefined,
       }),
@@ -145,6 +149,7 @@ export async function apiSearch(f: Filters, limit: number): Promise<SessionHit[]
         q: f.q,
         agent: f.agents.join(","),
         tool: f.tools,
+        model: f.models,
         cwd: f.cwd,
         since: f.since,
         until: f.until,

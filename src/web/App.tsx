@@ -62,6 +62,7 @@ const emptyFilters: Filters = {
   q: "",
   agents: [],
   tools: [],
+  models: [],
   cwd: "",
   since: "",
   until: "",
@@ -73,7 +74,11 @@ const emptyFilters: Filters = {
 
 export function App() {
   const [filters, setFilters] = useState<Filters>(emptyFilters);
-  const [facets, setFacets] = useState<{ tools: string[]; cwds: string[] }>({ tools: [], cwds: [] });
+  const [facets, setFacets] = useState<{ tools: string[]; cwds: string[]; models: string[] }>({
+    tools: [],
+    cwds: [],
+    models: [],
+  });
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [hits, setHits] = useState<SessionHit[] | null>(null);
   const [tab, setTab] = useState<"sessions" | "hits">("sessions");
@@ -82,6 +87,7 @@ export function App() {
   const [loading, setLoading] = useState(false);
   const [searching, setSearching] = useState(false);
   const searchSeq = useRef(0); // guards against stale (out-of-order) search resolutions
+  const sessionsSeq = useRef(0); // same, for the session-list fetch
   const [showFilters, setShowFilters] = useState(false);
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const set = (p: Partial<Filters>) => setFilters((f) => ({ ...f, ...p }));
@@ -124,6 +130,8 @@ export function App() {
     chips.push({ key: "agent:" + a, label: tag(a), onRemove: () => set({ agents: filters.agents.filter((x) => x !== a) }) });
   for (const t of filters.tools)
     chips.push({ key: "tool:" + t, label: "⚙ " + t, onRemove: () => set({ tools: filters.tools.filter((x) => x !== t) }) });
+  for (const m of filters.models)
+    chips.push({ key: "model:" + m, label: "✦ " + m, onRemove: () => set({ models: filters.models.filter((x) => x !== m) }) });
   if (filters.cwd) chips.push({ key: "cwd", label: "📁 " + homeShort(filters.cwd), onRemove: () => set({ cwd: "" }) });
   if (filters.since) chips.push({ key: "since", label: "≥ " + filters.since, onRemove: () => set({ since: "" }) });
   if (filters.until) chips.push({ key: "until", label: "≤ " + filters.until, onRemove: () => set({ until: "" }) });
@@ -142,7 +150,7 @@ export function App() {
   if (filters.mask) chips.push({ key: "mask", label: "🔒 mask", onRemove: () => set({ mask: false }) });
 
   const clearAll = () =>
-    set({ agents: [], tools: [], cwd: "", since: "", until: "", archived: "all", automated: "all", mask: false });
+    set({ agents: [], tools: [], models: [], cwd: "", since: "", until: "", archived: "all", automated: "all", mask: false });
 
   // Hits are matching sessions. With a finite cap, reaching it means more
   // sessions matched than were returned; "All" (limit 0) never truncates.
@@ -172,11 +180,20 @@ export function App() {
   };
 
   useEffect(() => {
-    apiSessions({ agents: filters.agents, cwd: filters.cwd, archived: filters.archived, automated: filters.automated }).then(
-      setSessions,
-    );
+    const seq = ++sessionsSeq.current;
+    apiSessions({
+      agents: filters.agents,
+      cwd: filters.cwd,
+      models: filters.models,
+      archived: filters.archived,
+      automated: filters.automated,
+      // Ignore a stale resolution so an older fetch can't overwrite a newer one
+      // (which showed sessions that no longer match the active filters).
+    }).then((s) => {
+      if (sessionsSeq.current === seq) setSessions(s);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.agents.join(","), filters.cwd, filters.archived, filters.automated]);
+  }, [filters.agents.join(","), filters.cwd, filters.models.join(","), filters.archived, filters.automated]);
 
   useEffect(() => {
     apiFacets().then(setFacets);
@@ -233,6 +250,7 @@ export function App() {
     hasSearch,
     filters.q,
     filters.tools.join(","),
+    filters.models.join(","),
     filters.cwd,
     filters.since,
     filters.until,
@@ -295,6 +313,22 @@ export function App() {
                   ))}
                 </select>
               </div>
+              {facets.models.length > 0 && (
+                <div className="frow">
+                  <span className="lbl">model</span>
+                  <select
+                    value={filters.models[0] ?? ""}
+                    onChange={(e) => set({ models: e.target.value ? [e.target.value] : [] })}
+                  >
+                    <option value="">all</option>
+                    {facets.models.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="frow">
                 <span className="lbl">project (cwd)</span>
                 <select value={filters.cwd} onChange={(e) => set({ cwd: e.target.value })}>
@@ -765,7 +799,9 @@ const Timeline = memo(function Timeline({
         <code>{session.id.slice(0, 8)}</code>
         <span>{session.cwd}</span>
         <span>{session.gitBranch ?? "-"}</span>
-        <span>{session.model ?? ""}</span>
+        <span title={session.models && session.models.length > 1 ? "models switched mid-session" : undefined}>
+          {session.models?.length ? session.models.join(" → ") : (session.model ?? "")}
+        </span>
         {u && (
           <span className="cost">
             {u.totalTokens.toLocaleString()} tok ·{" "}

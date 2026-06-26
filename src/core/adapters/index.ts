@@ -26,12 +26,15 @@ export async function findAllSessions(
   overrides?: RootOverrides,
   archived?: ArchivedFilter,
   automated?: AutomatedFilter,
+  models?: string[],
 ): Promise<SessionMeta[]> {
   const adapters = selectAdapters(agents, overrides);
   const lists = await Promise.all(adapters.map((a) => a.findSessions()));
+  const used = (m: SessionMeta) => m.models ?? (m.model ? [m.model] : []);
   return lists
     .flat()
     .filter((m) => matchArchived(m, archived) && matchAutomated(m, automated))
+    .filter((m) => !models?.length || models.some((x) => used(m).includes(x)))
     .sort((a, b) => b.mtime - a.mtime);
 }
 

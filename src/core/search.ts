@@ -17,6 +17,8 @@ export interface SearchFilters {
   tools?: string[];
   /** Substring match against session cwd. */
   cwd?: string;
+  /** Restrict to sessions that used any of these models (membership). */
+  models?: string[];
   /** ISO/date lower & upper bounds on event timestamp (inclusive). */
   since?: string;
   until?: string;
@@ -30,6 +32,13 @@ export interface SearchFilters {
   /** Stop after this many matches (0/undefined = no limit). */
   limit?: number;
   overrides?: RootOverrides;
+}
+
+/** A session passes when it used any of the requested models (empty = all). */
+function matchModels(meta: { models?: string[]; model?: string }, want?: string[]): boolean {
+  if (!want?.length) return true;
+  const used = meta.models ?? (meta.model ? [meta.model] : []);
+  return want.some((m) => used.includes(m));
 }
 
 function globToRegExp(glob: string): RegExp {
@@ -130,6 +139,7 @@ export async function* searchSessions(f: SearchFilters): AsyncGenerator<Match> {
     const metas = (await adapter.findSessions()).sort((a, b) => b.mtime - a.mtime);
     for (const meta of metas) {
       if (!matchArchived(meta, f.archived) || !matchAutomated(meta, f.automated)) continue;
+      if (!matchModels(meta, f.models)) continue;
       if (!cwdMatches(meta.cwd, ctx.cwdNeedle)) continue;
       let session: Session;
       try {
@@ -174,6 +184,7 @@ export async function searchSessionHits(f: SearchFilters): Promise<SessionHit[]>
     const metas = (await adapter.findSessions()).sort((a, b) => b.mtime - a.mtime);
     for (const meta of metas) {
       if (!matchArchived(meta, f.archived) || !matchAutomated(meta, f.automated)) continue;
+      if (!matchModels(meta, f.models)) continue;
       if (!cwdMatches(meta.cwd, ctx.cwdNeedle)) continue;
       let session: Session;
       try {
@@ -198,6 +209,7 @@ export async function searchSessionHits(f: SearchFilters): Promise<SessionHit[]>
         title: ctx.doMask ? mask(session.title, true) : session.title,
         ts: session.ended,
         mtime: session.mtime,
+        models: meta.models,
         archived: meta.archived,
         automated: meta.automated,
         origin: meta.origin,

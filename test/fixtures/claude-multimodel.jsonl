@@ -1,0 +1,6 @@
+{"type":"user","uuid":"u1","timestamp":"2026-06-24T04:00:00.000Z","cwd":"/Users/testuser/proj","gitBranch":"main","message":{"role":"user","content":"start"}}
+{"type":"assistant","uuid":"a1","timestamp":"2026-06-24T04:00:01.000Z","message":{"model":"claude-opus-4-8","role":"assistant","usage":{"input_tokens":100,"output_tokens":10},"content":[{"type":"text","text":"on opus"}]}}
+{"type":"user","uuid":"u2","timestamp":"2026-06-24T04:00:02.000Z","message":{"role":"user","content":"switch"}}
+{"type":"assistant","uuid":"a2","timestamp":"2026-06-24T04:00:03.000Z","message":{"model":"claude-sonnet-4-6","role":"assistant","content":[{"type":"text","text":"on sonnet"}]}}
+{"type":"assistant","uuid":"a3","timestamp":"2026-06-24T04:00:04.000Z","message":{"model":"claude-opus-4-8","role":"assistant","content":[{"type":"text","text":"back on opus"}]}}
+{"type":"assistant","uuid":"a4","timestamp":"2026-06-24T04:00:05.000Z","message":{"model":"<synthetic>","role":"assistant","usage":{"input_tokens":0,"output_tokens":0},"content":[{"type":"text","text":"API Error: 400"}]}}

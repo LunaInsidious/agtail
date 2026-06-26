@@ -5,6 +5,7 @@ import { aggregateUsage } from "../src/core/cost.js";
 
 const fixture = fileURLToPath(new URL("./fixtures/claude-session.jsonl", import.meta.url));
 const hookFixture = fileURLToPath(new URL("./fixtures/claude-hook.jsonl", import.meta.url));
+const multiModelFixture = fileURLToPath(new URL("./fixtures/claude-multimodel.jsonl", import.meta.url));
 
 describe("claude-code adapter", () => {
   it("reads metadata and a clean title", async () => {
@@ -20,6 +21,29 @@ describe("claude-code adapter", () => {
     const thinking = sess.events.filter((e) => e.kind === "thinking");
     expect(thinking.length).toBe(1);
     expect(thinking[0]!.text).toBe("Let me search the codebase.");
+  });
+
+  it("collects distinct models in first-seen order when the model is switched mid-session", async () => {
+    const sess = await claudeCodeAdapter().readSession(multiModelFixture);
+    // de-duped (opus appears twice), ordered by first appearance, and the
+    // "<synthetic>" sentinel (locally-fabricated API-error message) is excluded.
+    expect(sess.models).toEqual(["claude-opus-4-8", "claude-sonnet-4-6"]);
+    // `model` stays the first-seen one for back-compat.
+    expect(sess.model).toBe("claude-opus-4-8");
+  });
+
+  it("does not let the <synthetic> sentinel flip a priced session's cost to unknown", async () => {
+    const sess = await claudeCodeAdapter().readSession(multiModelFixture);
+    const u = aggregateUsage(sess.events, (m) => (m?.includes("opus") || m?.includes("sonnet") ? { input: 1, output: 1 } : null));
+    // <synthetic> carried zero usage and is no longer treated as a model, so it
+    // is absent from unpricedModels and the total stays a real number.
+    expect(u.unpricedModels).toEqual([]);
+    expect(u.costUsd).not.toBeNull();
+  });
+
+  it("reports a single-element models array for a one-model session", async () => {
+    const sess = await claudeCodeAdapter().readSession(fixture);
+    expect(sess.models).toEqual(["claude-opus-4-8"]);
   });
 
   it("merges tool_result into its tool_use", async () => {

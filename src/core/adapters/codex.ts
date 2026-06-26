@@ -49,6 +49,7 @@ interface Parsed {
   cwd?: string;
   version?: string;
   model?: string;
+  models?: string[];
   started?: string;
   ended?: string;
   title?: string;
@@ -60,7 +61,9 @@ async function parse(path: string): Promise<Parsed> {
   const events: Event[] = [];
   const pending = new Map<string, Event>(); // call_id -> tool_use awaiting result
   let lastAssistant: Event | undefined;
-  const out: Parsed = { events };
+  let curModel: string | undefined; // model of the current turn (updated per turn_context)
+  const models: string[] = []; // distinct models, first-seen order
+  const out: Parsed = { events, models };
 
   for await (const obj of iterJsonl(path)) {
     const ts = asString(obj.timestamp) || undefined;
@@ -86,7 +89,12 @@ async function parse(path: string): Promise<Parsed> {
       continue;
     }
     if (type === "turn_context") {
-      out.model ??= asString(p.model) || undefined;
+      const mm = asString(p.model) || undefined;
+      if (mm) {
+        curModel = mm;
+        out.model ??= mm;
+        if (!models.includes(mm)) models.push(mm);
+      }
       continue;
     }
 
@@ -143,7 +151,7 @@ async function parse(path: string): Promise<Parsed> {
         const usage = usageFrom(p.info);
         if (usage && lastAssistant) {
           lastAssistant.usage = usage;
-          lastAssistant.model = out.model;
+          lastAssistant.model = curModel ?? out.model;
         }
         break;
       }
@@ -197,6 +205,7 @@ async function readSession(path: string): Promise<Session> {
     cwd: parsed.cwd,
     version: parsed.version,
     model: parsed.model,
+    models: parsed.models,
     started: parsed.started,
     ended: parsed.ended,
     title: parsed.title ?? "(no prompt)",

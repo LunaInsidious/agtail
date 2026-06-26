@@ -47,23 +47,27 @@ function maskSession(s: Session): Session {
  * request (i.e. the path started with /api/), false to defer to static/SPA.
  */
 /** Distinct tool names + cwds across all sessions, for selectable filters. */
-async function computeFacets(ov: RootOverrides): Promise<{ tools: string[]; cwds: string[] }> {
+async function computeFacets(ov: RootOverrides): Promise<{ tools: string[]; cwds: string[]; models: string[] }> {
   const tools = new Set<string>();
   const cwds = new Set<string>();
+  const models = new Set<string>();
   for (const a of selectAdapters(undefined, ov)) {
     const metas = await a.findSessions();
-    for (const m of metas) if (m.cwd) cwds.add(m.cwd);
+    for (const m of metas) {
+      if (m.cwd) cwds.add(m.cwd);
+      for (const mm of m.models ?? (m.model ? [m.model] : [])) models.add(mm);
+    }
     const sessions = await Promise.all(metas.map((m) => a.readSession(m.path)));
     for (const s of sessions) for (const e of s.events) if (e.kind === "tool_use" && e.tool) tools.add(e.tool);
   }
-  return { tools: [...tools].sort(), cwds: [...cwds].sort() };
+  return { tools: [...tools].sort(), cwds: [...cwds].sort(), models: [...models].sort() };
 }
 
 export function createApiHandler(opts: ApiOptions = {}) {
   const ov = opts.overrides ?? {};
   const defaultLimit = opts.searchLimit ?? 500;
   // Facets are a full scan, so compute once and cache for the process lifetime.
-  let facets: Promise<{ tools: string[]; cwds: string[] }> | null = null;
+  let facets: Promise<{ tools: string[]; cwds: string[]; models: string[] }> | null = null;
   // LiteLLM price sheet, loaded once.
   let prices: ReturnType<typeof loadPriceResolver> | null = null;
 
@@ -83,6 +87,7 @@ export function createApiHandler(opts: ApiOptions = {}) {
           ov,
           parseArchived(q.get("archived")),
           parseAutomated(q.get("automated")),
+          q.getAll("model").filter(Boolean),
         );
         const proj = q.get("project")?.toLowerCase();
         sendJson(200, proj ? sessions.filter((m) => (m.cwd ?? "").toLowerCase().includes(proj)) : sessions);
@@ -117,6 +122,7 @@ export function createApiHandler(opts: ApiOptions = {}) {
           ignoreCase: q.get("case") !== "1",
           agents: parseAgents(q.get("agent")),
           tools: q.getAll("tool").filter(Boolean),
+          models: q.getAll("model").filter(Boolean),
           cwd: q.get("cwd") ?? undefined,
           since: q.get("since") ?? undefined,
           until: q.get("until") ?? undefined,

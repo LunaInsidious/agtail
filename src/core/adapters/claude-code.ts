@@ -17,6 +17,16 @@ function asString(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
 
+// Claude Code stamps a sentinel like "<synthetic>" on assistant messages it
+// fabricates locally (API errors, "[Request interrupted]" notices) rather than
+// getting from a real inference. These aren't models: angle-bracketed values
+// are dropped so they don't pollute the model list/header or flip cost to
+// "unknown" by looking like an unpriced model.
+function realModel(v: unknown): string | undefined {
+  const s = asString(v);
+  return s && !s.startsWith("<") ? s : undefined;
+}
+
 /** Concatenate text from a content value (string or block array). */
 function textFromContent(content: unknown): string {
   if (typeof content === "string") return content;
@@ -144,7 +154,7 @@ function normalizeLine(obj: Record<string, unknown>, seenUsage: Set<string>): Ev
   const message = msg as Record<string, unknown>;
   const role = asString(message.role) || typ || "?";
   const content = message.content;
-  const model = asString(message.model) || undefined;
+  const model = realModel(message.model);
   const msgId = asString(message.id);
   const rawUsage = usageFrom(message.usage);
 
@@ -266,7 +276,7 @@ async function readSession(path: string): Promise<Session> {
   let cwd: string | undefined;
   let gitBranch: string | undefined;
   let version: string | undefined;
-  let model: string | undefined;
+  const models: string[] = []; // distinct assistant models, first-seen order
   let started: string | undefined;
   let ended: string | undefined;
   let title: string | undefined;
@@ -297,7 +307,10 @@ async function readSession(path: string): Promise<Session> {
           title = t.split("\n")[0]!.slice(0, 120);
         }
       }
-      if (model === undefined && m.role === "assistant") model = asString(m.model) || undefined;
+      if (m.role === "assistant") {
+        const mm = realModel(m.model);
+        if (mm && !models.includes(mm)) models.push(mm);
+      }
     }
     for (const e of normalizeLine(obj, seenUsage)) raw.push(e);
   }
@@ -326,7 +339,8 @@ async function readSession(path: string): Promise<Session> {
     cwd,
     gitBranch,
     version,
-    model,
+    model: models[0],
+    models,
     started,
     ended,
     title: subTitle ?? title ?? "(no prompt)",

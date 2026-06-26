@@ -44,6 +44,15 @@ describe("session-level search", () => {
     expect(hits.every((h) => h.matchCount > 0 && h.snippet.length > 0)).toBe(true);
   });
 
+  it("filters sessions by model membership (used the model in any turn)", async () => {
+    const sonnet = await searchSessionHits({ pattern: "", models: ["claude-sonnet-4-6"], overrides });
+    expect(sonnet.length).toBeGreaterThan(0);
+    expect(sonnet.every((h) => h.models?.includes("claude-sonnet-4-6"))).toBe(true);
+    // A model no session used yields nothing.
+    const none = await searchSessionHits({ pattern: "", models: ["gpt-nonexistent"], overrides });
+    expect(none.length).toBe(0);
+  });
+
   it("limit bounds the number of sessions returned", async () => {
     const all = await searchSessionHits({ pattern: "", overrides });
     expect(all.length).toBeGreaterThan(1);
