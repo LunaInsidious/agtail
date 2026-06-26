@@ -701,9 +701,15 @@ const Timeline = memo(function Timeline({
   const matchesAt = (i: number) => !!needle && searchText[i]!.includes(needle);
   const isHidden = (e: Event, i: number) => {
     if (e.kind === "thinking" && !showThinking) return true;
-    if (e.kind === "hook" && (!showHooks || (hookFocus.size > 0 && !hookFocus.has(e.hookEvent ?? "hook")))) return true;
+    if (e.kind === "hook" && !showHooks) return true;
     if ((e.kind === "system" || e.kind === "unknown" || e.kind === "summary") && !showMeta) return true;
-    if (toolFilter.size && !(e.kind === "tool_use" && e.tool && toolFilter.has(e.tool))) return true;
+    // Tool and hook focus chips narrow the whole timeline to the selected kinds
+    // (union when both are active), so picking a hook type shows only those hooks.
+    if (toolFilter.size || hookFocus.size) {
+      const focusTool = e.kind === "tool_use" && e.tool && toolFilter.has(e.tool);
+      const focusHook = e.kind === "hook" && hookFocus.has(e.hookEvent ?? "hook");
+      if (!focusTool && !focusHook) return true;
+    }
     if (needle && matchesOnly && !matchesAt(i)) return true;
     return false;
   };
