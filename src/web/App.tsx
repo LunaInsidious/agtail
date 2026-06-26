@@ -36,6 +36,11 @@ const AUTOMATED_TIP =
 
 const homeShort = (p: string) => p.replace(/^\/Users\/[^/]+/, "~").replace(/^\/home\/[^/]+/, "~");
 
+// Cheap signature to detect that a cached session changed (a live one grew):
+// event count + last-event time. Append-only logs make this reliable enough to
+// avoid a needless re-render when the revalidated copy is identical.
+const sessionSig = (s: Session) => `${s.events.length}:${s.ended ?? ""}`;
+
 // Search result cap (matching events). User-selectable; 0 means no limit ("All").
 // Hitting the cap means results were truncated and there may be more ("500+").
 const DEFAULT_LIMIT = 500;
@@ -103,6 +108,9 @@ export function App() {
   const searchSeq = useRef(0); // guards against stale (out-of-order) search resolutions
   const sessionsSeq = useRef(0); // same, for the session-list fetch
   const openSeq = useRef(0); // same, for opening a session
+  // LRU cache of opened sessions (events + usage), keyed by agent:id:mask, so
+  // re-opening one — notably via back/forward — is instant with no refetch.
+  const sessionCache = useRef(new Map<string, Session>());
   const [showFilters, setShowFilters] = useState(false);
   const [limit, setLimit] = useState<number>(() => readHistory().limit);
   const set = (p: Partial<Filters>) => setFilters((f) => ({ ...f, ...p }));
@@ -226,13 +234,43 @@ export function App() {
   const open = useCallback(
     async (agent: Agent, id: string, withSeed?: Seed) => {
       setSeed(withSeed ?? { find: "" });
-      setLoading(true);
+      const key = `${agent}:${id}:${filters.mask ? 1 : 0}`;
+      const cache = sessionCache.current;
+      const store = (s: Session) => {
+        cache.delete(key); // re-insert so the key becomes most-recently-used
+        cache.set(key, s);
+        if (cache.size > 12) {
+          const oldest = cache.keys().next().value;
+          if (oldest !== undefined) cache.delete(oldest);
+        }
+      };
       // Guard against out-of-order resolutions: a slow earlier open must not
       // clobber a newer one (e.g. the mount restore vs. a quick click).
       const seq = ++openSeq.current;
+      const cached = cache.get(key);
+      if (cached) {
+        // Show the cached session instantly, then revalidate in the background:
+        // a live session may have grown, so refetch and swap in only if changed.
+        cache.delete(key);
+        cache.set(key, cached);
+        setLoading(false);
+        setCur(cached);
+        void apiSession(agent, id, filters.mask)
+          .then((fresh) => {
+            store(fresh);
+            if (openSeq.current === seq && sessionSig(fresh) !== sessionSig(cached)) setCur(fresh);
+          })
+          .catch(() => {
+            /* keep the cached view; a background revalidation failure is non-fatal */
+          });
+        return;
+      }
+      setLoading(true);
       try {
         const s = await apiSession(agent, id, filters.mask);
-        if (openSeq.current === seq) setCur(s);
+        if (openSeq.current !== seq) return;
+        store(s);
+        setCur(s);
       } finally {
         if (openSeq.current === seq) setLoading(false);
       }
