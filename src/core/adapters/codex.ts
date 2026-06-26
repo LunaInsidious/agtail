@@ -75,7 +75,11 @@ async function parse(path: string): Promise<Parsed> {
     const p = asRecord(obj.payload);
 
     if (type === "session_meta") {
-      out.id ??= asString(p.session_id) || asString(p.id) || undefined;
+      // A resumed/forked rollout records the ORIGINAL conversation in
+      // `session_id` but gets its own unique `id`. Identify by the rollout's own
+      // `id` so a fork doesn't collapse onto — and duplicate — the original
+      // session's id (a dup id breaks list keys / dedup downstream).
+      out.id ??= asString(p.id) || asString(p.session_id) || undefined;
       out.cwd ??= asString(p.cwd) || undefined;
       out.version ??= asString(p.cli_version) || undefined;
       // Interactive Codex runs as the TUI (originator "codex-tui"). Anything else

@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { codexAdapter } from "../src/core/adapters/codex.js";
 
 const fixture = fileURLToPath(new URL("./fixtures/rollout-codex-test.jsonl", import.meta.url));
+const forkFixture = fileURLToPath(new URL("./fixtures/rollout-codex-fork.jsonl", import.meta.url));
 
 describe("codex adapter", () => {
   it("normalizes the event_msg stream (not response_item noise)", async () => {
@@ -37,6 +38,13 @@ describe("codex adapter", () => {
     expect(withUsage?.usage?.inputTokens).toBe(800); // 1000 - 200 cached
     expect(withUsage?.usage?.cacheReadTokens).toBe(200);
     expect(withUsage?.usage?.outputTokens).toBe(50);
+  });
+
+  it("identifies a resumed/forked rollout by its own id, not the original session_id", async () => {
+    // A fork records the original conversation in session_id but has its own id;
+    // using session_id would collapse it onto (and duplicate) the original.
+    const sess = await codexAdapter().readSession(forkFixture);
+    expect(sess.id).toBe("fork-own-id");
   });
 
   it("preserves unrecognized events as unknown, but skips noise", async () => {
