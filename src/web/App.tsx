@@ -72,8 +72,22 @@ const emptyFilters: Filters = {
   automated: "all",
 };
 
+// Filter/search state lives in the browser's history entry (history.state), not
+// the URL: back/forward and reload both restore it, while the address bar stays
+// clean so no local paths or search text ever leak into a shareable/synced URL.
+type HistorySnap = { filters: Filters; limit: number };
+function readHistory(): HistorySnap {
+  const s = (window.history.state?.agtail ?? null) as { filters?: Partial<Filters>; limit?: number } | null;
+  return {
+    // Merge onto emptyFilters so an older snapshot missing a newer field still
+    // gets that field's default.
+    filters: { ...emptyFilters, ...(s?.filters ?? {}) },
+    limit: typeof s?.limit === "number" ? s.limit : DEFAULT_LIMIT,
+  };
+}
+
 export function App() {
-  const [filters, setFilters] = useState<Filters>(emptyFilters);
+  const [filters, setFilters] = useState<Filters>(() => readHistory().filters);
   const [facets, setFacets] = useState<{ tools: string[]; cwds: string[]; models: string[] }>({
     tools: [],
     cwds: [],
@@ -89,8 +103,35 @@ export function App() {
   const searchSeq = useRef(0); // guards against stale (out-of-order) search resolutions
   const sessionsSeq = useRef(0); // same, for the session-list fetch
   const [showFilters, setShowFilters] = useState(false);
-  const [limit, setLimit] = useState(DEFAULT_LIMIT);
+  const [limit, setLimit] = useState<number>(() => readHistory().limit);
   const set = (p: Partial<Filters>) => setFilters((f) => ({ ...f, ...p }));
+
+  // Mirror filters/limit into a back-able history entry. Debounced so rapid
+  // edits / typing collapse into one entry ("the executed query"). histRef holds
+  // the snapshot already reflected in history, so applying a popstate (or the
+  // initial mount) never pushes a duplicate.
+  const histRef = useRef(JSON.stringify({ filters, limit } as HistorySnap));
+  useEffect(() => {
+    const snap: HistorySnap = { filters, limit };
+    const s = JSON.stringify(snap);
+    if (s === histRef.current) return;
+    const t = setTimeout(() => {
+      histRef.current = s;
+      window.history.pushState({ ...window.history.state, agtail: snap }, "");
+    }, 300);
+    return () => clearTimeout(t);
+  }, [filters, limit]);
+  // Back/forward: restore the snapshot of the entry we navigated to.
+  useEffect(() => {
+    const onPop = () => {
+      const snap = readHistory();
+      histRef.current = JSON.stringify(snap);
+      setFilters(snap.filters);
+      setLimit(snap.limit);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   // Status filter mirrors the agent toggles: two chips (active / archived) where
   // neither-or-both selected means "all", matching the agents "none = all" idiom.
