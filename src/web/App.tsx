@@ -540,17 +540,21 @@ const SessionList = memo(function SessionList({
     <>
       {sessions.map((s) => {
         if (s.isSubagent) {
-          // Orphan (parent filtered out): show standalone so it's not lost.
-          return s.parentId && present.has(s.parentId) ? null : (
-            <SessionRow key={s.agent + s.id} s={s} child {...props} />
-          );
+          // Rendered as a child under its parent below; skip here when present.
+          if (s.parentId && present.has(s.parentId)) return null;
+          // Orphan (parent filtered out): show as a standalone top-level row, NOT
+          // with the child indent — otherwise it looks nested under the unrelated
+          // row above it (e.g. a Claude subagent appearing under a Codex session).
+          return <SessionRow key={s.path} s={s} {...props} />;
         }
         const kids = childrenOf.get(s.id) ?? [];
         return (
-          <div key={s.agent + s.id}>
+          // Key on the file path: unique per session file even if two rollouts
+          // ever resolve to the same id, so React never strands stale rows.
+          <div key={s.path}>
             <SessionRow s={s} {...props} />
             {kids.map((c) => (
-              <SessionRow key={c.agent + c.id} s={c} child {...props} />
+              <SessionRow key={c.path} s={c} child {...props} />
             ))}
           </div>
         );
