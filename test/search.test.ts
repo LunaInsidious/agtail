@@ -44,6 +44,17 @@ describe("session-level search", () => {
     expect(hits.every((h) => h.matchCount > 0 && h.snippet.length > 0)).toBe(true);
   });
 
+  it("carries subagent linkage on hits so search results can nest", async () => {
+    const subDir = fileURLToPath(new URL("./fixtures-sub", import.meta.url));
+    const hits = await searchSessionHits({ pattern: "repo", agents: ["claude-code"], overrides: { "claude-code": subDir } });
+    const sub = hits.find((h) => h.isSubagent);
+    expect(sub).toBeDefined();
+    expect(sub!.parentId).toBe("parent-1");
+    expect(sub!.agentName).toBe("Explore");
+    // the matched parent is present too, so the UI nests the child under it
+    expect(hits.some((h) => !h.isSubagent && h.sessionId === "parent-1")).toBe(true);
+  });
+
   it("filters sessions by model membership (used the model in any turn)", async () => {
     const sonnet = await searchSessionHits({ pattern: "", models: ["claude-sonnet-4-6"], overrides });
     expect(sonnet.length).toBeGreaterThan(0);

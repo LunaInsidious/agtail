@@ -141,6 +141,11 @@ export interface SessionHit {
   archived?: boolean;
   automated?: boolean;
   origin?: string;
+  // Subagent linkage, so search results can nest a matched child under its
+  // matched parent (and show an unmatched-parent child standalone).
+  isSubagent?: boolean;
+  parentId?: string;
+  agentName?: string;
   matchCount: number;
   snippet: string; // first matching event's snippet
 }

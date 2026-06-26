@@ -213,6 +213,9 @@ export async function searchSessionHits(f: SearchFilters): Promise<SessionHit[]>
         archived: meta.archived,
         automated: meta.automated,
         origin: meta.origin,
+        isSubagent: meta.isSubagent,
+        parentId: meta.parentId,
+        agentName: meta.agentName,
         matchCount,
         snippet: firstSnippet,
       });

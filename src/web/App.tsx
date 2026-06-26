@@ -75,14 +75,15 @@ const emptyFilters: Filters = {
 // Filter/search state lives in the browser's history entry (history.state), not
 // the URL: back/forward and reload both restore it, while the address bar stays
 // clean so no local paths or search text ever leak into a shareable/synced URL.
-type HistorySnap = { filters: Filters; limit: number };
+type HistorySnap = { filters: Filters; limit: number; open: { agent: Agent; id: string } | null };
 function readHistory(): HistorySnap {
-  const s = (window.history.state?.agtail ?? null) as { filters?: Partial<Filters>; limit?: number } | null;
+  const s = (window.history.state?.agtail ?? null) as Partial<HistorySnap> | null;
   return {
     // Merge onto emptyFilters so an older snapshot missing a newer field still
     // gets that field's default.
     filters: { ...emptyFilters, ...(s?.filters ?? {}) },
     limit: typeof s?.limit === "number" ? s.limit : DEFAULT_LIMIT,
+    open: s?.open ?? null,
   };
 }
 
@@ -95,43 +96,23 @@ export function App() {
   });
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [hits, setHits] = useState<SessionHit[] | null>(null);
-  const [tab, setTab] = useState<"sessions" | "hits">("sessions");
   const [cur, setCur] = useState<Session | null>(null);
   const [seed, setSeed] = useState<Seed>({ find: "" });
   const [loading, setLoading] = useState(false);
   const [searching, setSearching] = useState(false);
   const searchSeq = useRef(0); // guards against stale (out-of-order) search resolutions
   const sessionsSeq = useRef(0); // same, for the session-list fetch
+  const openSeq = useRef(0); // same, for opening a session
   const [showFilters, setShowFilters] = useState(false);
   const [limit, setLimit] = useState<number>(() => readHistory().limit);
   const set = (p: Partial<Filters>) => setFilters((f) => ({ ...f, ...p }));
 
-  // Mirror filters/limit into a back-able history entry. Debounced so rapid
-  // edits / typing collapse into one entry ("the executed query"). histRef holds
-  // the snapshot already reflected in history, so applying a popstate (or the
-  // initial mount) never pushes a duplicate.
-  const histRef = useRef(JSON.stringify({ filters, limit } as HistorySnap));
-  useEffect(() => {
-    const snap: HistorySnap = { filters, limit };
-    const s = JSON.stringify(snap);
-    if (s === histRef.current) return;
-    const t = setTimeout(() => {
-      histRef.current = s;
-      window.history.pushState({ ...window.history.state, agtail: snap }, "");
-    }, 300);
-    return () => clearTimeout(t);
-  }, [filters, limit]);
-  // Back/forward: restore the snapshot of the entry we navigated to.
-  useEffect(() => {
-    const onPop = () => {
-      const snap = readHistory();
-      histRef.current = JSON.stringify(snap);
-      setFilters(snap.filters);
-      setLimit(snap.limit);
-    };
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, []);
+  // History (back/forward + reload) carries filters, limit AND the open session.
+  // The effects live after `open` is defined (below). histRef holds the snapshot
+  // already in history so a popstate/init never re-pushes it; skipFirstPush drops
+  // the one push that would otherwise fire for the already-in-history mount state.
+  const histRef = useRef("");
+  const skipFirstPush = useRef(true);
 
   // Status filter mirrors the agent toggles: two chips (active / archived) where
   // neither-or-both selected means "all", matching the agents "none = all" idiom.
@@ -246,14 +227,103 @@ export function App() {
     async (agent: Agent, id: string, withSeed?: Seed) => {
       setSeed(withSeed ?? { find: "" });
       setLoading(true);
+      // Guard against out-of-order resolutions: a slow earlier open must not
+      // clobber a newer one (e.g. the mount restore vs. a quick click).
+      const seq = ++openSeq.current;
       try {
-        setCur(await apiSession(agent, id, filters.mask));
+        const s = await apiSession(agent, id, filters.mask);
+        if (openSeq.current === seq) setCur(s);
       } finally {
-        setLoading(false);
+        if (openSeq.current === seq) setLoading(false);
       }
     },
     [filters.mask],
   );
+
+  // When a row becomes the open session, the row whose id matches this ref is
+  // scrolled to the TOP of the list (vs the default "scroll just into view");
+  // set on a parent jump so the parent lands at the top. One-shot.
+  const scrollTargetRef = useRef<string | null>(null);
+
+  // Opening a session's parent from the timeline header. If the parent is among
+  // the current search results, stay in results and just open (its row gets the
+  // active highlight). Otherwise clear the content search so the list drops back
+  // to the full browse tree, where the parent lives in context. Either way the
+  // parent row is scrolled to the top.
+  const openParent = useCallback(
+    (agent: Agent, id: string) => {
+      const inResults = !!hits?.some((h) => h.sessionId === id);
+      if (!inResults) setFilters((f) => ({ ...f, q: "", tools: [], since: "", until: "", kinds: [] }));
+      scrollTargetRef.current = id;
+      void open(agent, id);
+    },
+    [open, hits],
+  );
+
+  // Keep the latest `open` reachable from the once-registered popstate listener.
+  const openRef = useRef(open);
+  openRef.current = open;
+
+  // Push the CURRENT render's state as a new back-able history entry, deduped
+  // against the entry already in history. Defined per-render so it closes over
+  // the live filters/limit/cur (no stale snapshot).
+  const pushSnap = () => {
+    const snap: HistorySnap = { filters, limit, open: cur ? { agent: cur.agent, id: cur.id } : null };
+    const s = JSON.stringify(snap);
+    if (s === histRef.current) return; // already the current entry
+    histRef.current = s;
+    window.history.pushState({ ...window.history.state, agtail: snap }, "");
+  };
+  // Signatures that should create an entry the instant they change (discrete
+  // navigation), vs the query text which is debounced while typing.
+  const openSig = cur ? `${cur.agent}:${cur.id}` : "";
+  const chipSig = JSON.stringify([
+    filters.agents, filters.tools, filters.models, filters.cwd, filters.since,
+    filters.until, filters.kinds, filters.mask, filters.archived, filters.automated, limit,
+  ]);
+
+  // On mount, restore the open session recorded in history (filters/limit were
+  // already seeded into useState). histRef is set to the restored snapshot so the
+  // restore's own state change doesn't get re-pushed as a new entry.
+  useEffect(() => {
+    const snap = readHistory();
+    histRef.current = JSON.stringify(snap);
+    if (snap.open) void open(snap.open.agent, snap.open.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Open a session, change a chip, or change the cap → its own entry immediately,
+  // so browsing sessions is fully back/forward-able however fast you click. The
+  // first run is the already-in-history mount state, so it's skipped.
+  useEffect(() => {
+    if (skipFirstPush.current) {
+      skipFirstPush.current = false;
+      return;
+    }
+    pushSnap();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openSig, chipSig]);
+
+  // Typing in the query box settles into a single entry — debounced.
+  useEffect(() => {
+    const t = setTimeout(pushSnap, 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.q]);
+
+  // Back/forward: restore the snapshot — filters, limit, and the open session.
+  useEffect(() => {
+    const onPop = () => {
+      const snap = readHistory();
+      histRef.current = JSON.stringify(snap);
+      setFilters(snap.filters);
+      setLimit(snap.limit);
+      if (snap.open) void openRef.current(snap.open.agent, snap.open.id);
+      else setCur(null);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   // A search is meaningful when there's a query or a search-specific filter.
   // cwd/agents/archived/automated alone just filter the Sessions list.
@@ -272,11 +342,9 @@ export function App() {
       searchSeq.current++; // invalidate any in-flight search
       setHits(null);
       setSearching(false);
-      setTab((t) => (t === "hits" ? "sessions" : t));
       return;
     }
     setSearching(true); // stays true through debounce AND fetch (guarded below)
-    setTab("hits"); // show the Hits tab immediately; loading renders inside it
     const seq = ++searchSeq.current;
     const t = setTimeout(() => {
       apiSearch(filters, limit)
@@ -307,7 +375,6 @@ export function App() {
     e?.preventDefault();
     if (!hasSearch) return;
     setSearching(true);
-    setTab("hits");
     const seq = ++searchSeq.current;
     apiSearch(filters, limit)
       .then((h) => { if (searchSeq.current === seq) setHits(h); })
@@ -476,26 +543,29 @@ export function App() {
 
       <main>
         <aside className="sidebar" style={{ flex: `0 0 ${sbWidth}px`, width: sbWidth }}>
-          <div className="tabs">
-            <button className={tab === "sessions" ? "on" : ""} onClick={() => setTab("sessions")}>
-              Sessions {sessions.length ? `(${sessions.length})` : ""}
-            </button>
-            {(hits || searching) && (
-              <button className={tab === "hits" ? "on" : ""} onClick={() => setTab("hits")}>
-                Hits {hits ? `(${hits.length}${truncated ? "+" : ""})` : ""}
-              </button>
+          {/* One list, two modes: browse (no search) shows every session as a
+              tree; searching shows only matched sessions (matched child nested
+              under matched parent, else standalone). */}
+          <div className="listhead">
+            {hasSearch ? (
+              <>Results {hits ? `(${hits.length}${truncated ? "+" : ""})` : ""}</>
+            ) : (
+              <>Sessions {sessions.length ? `(${sessions.length})` : ""}</>
             )}
+            {searching && <span className="spinner" />}
           </div>
-          {tab === "sessions" ? (
-            <SessionList sessions={sessions} cur={cur} onOpen={open} />
-          ) : (
+          {hasSearch ? (
             <HitList
               hits={hits ?? []}
               truncated={truncated}
               searching={searching}
               seed={{ find: filters.q, tool: filters.tools[0] }}
+              cur={cur}
               onOpen={open}
+              scrollTarget={scrollTargetRef}
             />
+          ) : (
+            <SessionList sessions={sessions} cur={cur} onOpen={open} scrollTarget={scrollTargetRef} />
           )}
         </aside>
         <div className="resizer" onMouseDown={startResize} title="Drag to resize" />
@@ -508,7 +578,7 @@ export function App() {
               or search across all sessions from the bar above ↑
             </div>
           )}
-          {!loading && cur && <Timeline session={cur} seed={seed} onOpen={open} />}
+          {!loading && cur && <Timeline session={cur} seed={seed} onOpen={open} onOpenParent={openParent} />}
         </section>
       </main>
     </div>
@@ -519,21 +589,29 @@ function SessionRow({
   s,
   cur,
   onOpen,
+  scrollTarget,
   child,
 }: {
   s: SessionMeta;
   cur: Session | null;
   onOpen: (a: Agent, id: string) => void;
+  scrollTarget: React.MutableRefObject<string | null>;
   child?: boolean;
 }) {
+  const active = !!cur && cur.id === s.id;
+  const ref = useRef<HTMLDivElement>(null);
+  // Bring the selected row into view. Default "nearest" is a no-op if already
+  // visible; a parent jump (scrollTarget matches) lands the row at the top.
+  useEffect(() => {
+    if (!active) return;
+    const top = scrollTarget.current === s.id;
+    if (top) scrollTarget.current = null;
+    ref.current?.scrollIntoView({ block: top ? "start" : "nearest" });
+  }, [active]);
   return (
     <div
-      className={
-        "sess" +
-        (child ? " child" : "") +
-        (s.archived || s.automated ? " dim" : "") +
-        (cur && cur.id === s.id ? " active" : "")
-      }
+      ref={ref}
+      className={"sess" + (child ? " child" : "") + (s.archived || s.automated ? " dim" : "") + (active ? " active" : "")}
       onClick={() => onOpen(s.agent, s.id)}
     >
       <div className="row1">
@@ -560,10 +638,12 @@ const SessionList = memo(function SessionList({
   sessions,
   cur,
   onOpen,
+  scrollTarget,
 }: {
   sessions: SessionMeta[];
   cur: Session | null;
   onOpen: (a: Agent, id: string) => void;
+  scrollTarget: React.MutableRefObject<string | null>;
 }) {
   if (!sessions.length) return <div className="empty">None</div>;
   // Nest subagent sessions under the parent that spawned them.
@@ -576,7 +656,7 @@ const SessionList = memo(function SessionList({
     }
   }
   const present = new Set(sessions.map((s) => s.id));
-  const props = { cur, onOpen };
+  const props = { cur, onOpen, scrollTarget };
   return (
     <>
       {sessions.map((s) => {
@@ -604,18 +684,71 @@ const SessionList = memo(function SessionList({
   );
 });
 
-function HitList({
+function HitRow({
+  m,
+  cur,
+  seed,
+  onOpen,
+  scrollTarget,
+  child,
+}: {
+  m: SessionHit;
+  cur: Session | null;
+  seed: Seed;
+  onOpen: (a: Agent, id: string, seed?: Seed) => void;
+  scrollTarget: React.MutableRefObject<string | null>;
+  child?: boolean;
+}) {
+  const active = !!cur && cur.id === m.sessionId;
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!active) return;
+    const top = scrollTarget.current === m.sessionId;
+    if (top) scrollTarget.current = null;
+    ref.current?.scrollIntoView({ block: top ? "start" : "nearest" });
+  }, [active]);
+  return (
+    <div
+      ref={ref}
+      className={"hit" + (child ? " child" : "") + (m.archived || m.automated ? " dim" : "") + (active ? " active" : "")}
+      onClick={() => onOpen(m.agent, m.sessionId, seed)}
+    >
+      <div className="row1">
+        {child && <span className="branch">↳</span>}
+        <span className={"src " + m.agent}>{tag(m.agent)}</span>
+        {m.archived && <span className="archmark" title="archived">🗄</span>}
+        {m.automated && (
+          <span className="automark" title={AUTOMATED_TIP}>
+            🤖 {originLabel(m.origin)}
+          </span>
+        )}
+        {m.isSubagent && m.agentName && <span className="agentname">{m.agentName}</span>}
+        <span className="sid">{m.sessionId.slice(0, 8)}</span>
+        <span>{fmtTs(m.ts)}</span>
+        <span className="matchn" title="matching events">{m.matchCount} match{m.matchCount === 1 ? "" : "es"}</span>
+      </div>
+      <div className="title">{m.title}</div>
+      <div className="snippet">{m.snippet}</div>
+    </div>
+  );
+}
+
+const HitList = memo(function HitList({
   hits,
   truncated,
   searching,
   seed,
+  cur,
   onOpen,
+  scrollTarget,
 }: {
   hits: SessionHit[];
   truncated: boolean;
   searching: boolean;
   seed: Seed;
+  cur: Session | null;
   onOpen: (a: Agent, id: string, seed?: Seed) => void;
+  scrollTarget: React.MutableRefObject<string | null>;
 }) {
   // No results yet (first search) → centered spinner. Re-search with existing
   // results keeps them visible and shows a thin loading strip on top.
@@ -626,6 +759,18 @@ function HitList({
       <div className="empty">No matches</div>
     );
   }
+  // Nest a matched subagent under its matched parent; a matched subagent whose
+  // parent isn't among the results shows standalone (flat). Same rule as the
+  // browse list — only nodes that actually matched appear.
+  const childrenOf = new Map<string, SessionHit[]>();
+  for (const m of hits)
+    if (m.isSubagent && m.parentId) {
+      const arr = childrenOf.get(m.parentId) ?? [];
+      arr.push(m);
+      childrenOf.set(m.parentId, arr);
+    }
+  const present = new Set(hits.map((m) => m.sessionId));
+  const rowProps = { cur, seed, onOpen, scrollTarget };
   return (
     <>
       {searching && <div className="searchbar" />}
@@ -634,31 +779,24 @@ function HitList({
           Showing the first {hits.length} sessions — raise “max results” or refine your search to see more.
         </div>
       )}
-      {hits.map((m) => (
-        <div
-          key={m.agent + m.sessionId}
-          className={"hit" + (m.archived || m.automated ? " dim" : "")}
-          onClick={() => onOpen(m.agent, m.sessionId, seed)}
-        >
-          <div className="row1">
-            <span className={"src " + m.agent}>{tag(m.agent)}</span>
-            {m.archived && <span className="archmark" title="archived">🗄</span>}
-            {m.automated && (
-              <span className="automark" title={AUTOMATED_TIP}>
-                🤖 {originLabel(m.origin)}
-              </span>
-            )}
-            <span className="sid">{m.sessionId.slice(0, 8)}</span>
-            <span>{fmtTs(m.ts)}</span>
-            <span className="matchn" title="matching events">{m.matchCount} match{m.matchCount === 1 ? "" : "es"}</span>
+      {hits.map((m) => {
+        if (m.isSubagent) {
+          if (m.parentId && present.has(m.parentId)) return null; // nested below
+          return <HitRow key={m.path} m={m} {...rowProps} />; // orphan match → flat
+        }
+        const kids = childrenOf.get(m.sessionId) ?? [];
+        return (
+          <div key={m.path}>
+            <HitRow m={m} {...rowProps} />
+            {kids.map((c) => (
+              <HitRow key={c.path} m={c} child {...rowProps} />
+            ))}
           </div>
-          <div className="title">{m.title}</div>
-          <div className="snippet">{m.snippet}</div>
-        </div>
-      ))}
+        );
+      })}
     </>
   );
-}
+});
 
 // Searchable text for one event (in-session find).
 function eventText(e: Event): string {
@@ -695,10 +833,12 @@ const Timeline = memo(function Timeline({
   session,
   seed,
   onOpen,
+  onOpenParent,
 }: {
   session: Session;
   seed: Seed;
   onOpen: (a: Agent, id: string, seed?: Seed) => void;
+  onOpenParent: (a: Agent, id: string) => void;
 }) {
   const [toolFilter, setToolFilter] = useState<Set<string>>(() => seedTools(seed));
   const [showThinking, setShowThinking] = useState(true);
@@ -836,7 +976,7 @@ const Timeline = memo(function Timeline({
         {session.isSubagent && (
           <span className="subof">
             ↳ subagent{session.agentName ? ` (${session.agentName})` : ""} of{" "}
-            <a onClick={() => session.parentId && onOpen(session.agent, session.parentId)}>
+            <a onClick={() => session.parentId && onOpenParent(session.agent, session.parentId)}>
               {session.parentId?.slice(0, 8)}
             </a>
           </span>

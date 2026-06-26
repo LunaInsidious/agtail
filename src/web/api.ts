@@ -87,6 +87,9 @@ export interface SessionHit {
   archived?: boolean;
   automated?: boolean;
   origin?: string;
+  isSubagent?: boolean;
+  parentId?: string;
+  agentName?: string;
   matchCount: number;
   snippet: string;
 }
