@@ -11,7 +11,7 @@ import { useSavedSearches } from "./hooks/useSavedSearches.js";
 import { useRecentSearches } from "./hooks/useRecentSearches.js";
 import { useHistoryNav } from "./hooks/useHistoryNav.js";
 
-// eslint-disable-next-line complexity -- root container: breadth of UI state and handlers; already decomposed into hooks/ and components/. Ratchet target.
+// eslint-disable-next-line sonarjs/cognitive-complexity -- root container: breadth of UI state and handlers; already decomposed into hooks/ and components/. Ratchet target.
 export function App() {
   const [filters, setFilters] = useState<Filters>(() => readHistory().filters);
   const [facets, setFacets] = useState<{ tools: string[]; cwds: string[]; models: string[] }>({

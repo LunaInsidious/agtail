@@ -1,6 +1,7 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["react", "typescript", "unicorn", "oxc"],
+  "jsPlugins": ["eslint-plugin-sonarjs"],
   "categories": { "correctness": "error" },
   "rules": {
     "max-lines": ["error", { "max": 400, "skipBlankLines": true, "skipComments": true }],
@@ -10,7 +11,7 @@
     "max-nested-callbacks": ["error", { "max": 4 }],
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "error",
-    "complexity": ["error", { "max": 15 }]
+    "sonarjs/cognitive-complexity": ["error", 15]
   },
   "overrides": [
     {

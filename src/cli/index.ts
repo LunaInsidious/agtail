@@ -151,7 +151,7 @@ async function cmdList(opts: any, global: GlobalOpts) {
 }
 
 // --- show --------------------------------------------------------------------
-// eslint-disable-next-line complexity -- top-level CLI command: resolves a session and prints it; one branch per output flag.
+// eslint-disable-next-line sonarjs/cognitive-complexity -- top-level CLI command: resolves a session and prints it; one branch per output flag.
 async function cmdShow(id: string, opts: any, global: GlobalOpts) {
   const sess = await resolveSession(id, parseAgents(opts.agent), overrides(global));
   if (!sess) return console.log("no matching session:", id);

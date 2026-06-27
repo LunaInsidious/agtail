@@ -37,7 +37,6 @@ function Highlighted({ text, term }: { text: string; term?: string }) {
 // A glob tool filter (e.g. "mcp__*") can't seed the exact-match in-session filter.
 const seedTools = (s: Seed) => (s.tool && !s.tool.includes("*") ? new Set([s.tool]) : new Set<string>());
 
-// eslint-disable-next-line complexity -- root timeline view: breadth of UI state (filters/find/collapse) drives the count; the heavy logic already lives in child components and hooks.
 export const Timeline = memo(function Timeline({
   session,
   seed,
@@ -128,7 +127,6 @@ export const Timeline = memo(function Timeline({
     });
 
   const matchesAt = (i: number) => !!needle && searchText[i]!.includes(needle);
-  // eslint-disable-next-line complexity -- row-visibility predicate: one branch per filter dimension (thinking/meta/hook/tool/find).
   const isHidden = (e: Event, i: number) => {
     if (e.kind === "thinking" && !showThinking) return true;
     if (e.kind === "hook" && !showHooks) return true;
@@ -329,7 +327,7 @@ function UsageBadge({ e }: { e: Event }) {
   );
 }
 
-// eslint-disable-next-line complexity -- event renderer: a switch over event kinds (text/tool/thinking/hook/system…).
+// eslint-disable-next-line sonarjs/cognitive-complexity -- event renderer: a switch over event kinds (text/tool/thinking/hook/system…).
 const EventRow = memo(function EventRow({ e, highlight }: { e: Event; highlight?: string }) {
   if (e.kind === "tool_use") {
     return (
@@ -523,7 +521,6 @@ function Collapsible({
 }
 
 // Mirror of core/format.ts summarizeInput for the browser.
-// eslint-disable-next-line complexity -- per-tool input summarizer: a switch over known tool names; breadth, not depth.
 function summarizeInput(tool: string | undefined, input: unknown): string {
   if (input == null || typeof input !== "object") return String(input ?? "");
   const i = input as Record<string, unknown>;

@@ -66,6 +66,7 @@ function scriptNames(cmd: string): string {
 
 /** Summarize a Stop hook-summary system record (carries hookInfos: command,
  * duration, errors) into a readable, searchable line. */
+// eslint-disable-next-line sonarjs/cognitive-complexity -- hook payload summarizer: one branch per hook event shape.
 function hookSummary(obj: Record<string, unknown>): string {
   const infos = Array.isArray(obj.hookInfos) ? obj.hookInfos : [];
   const names: string[] = [];
@@ -122,7 +123,7 @@ function attachmentEvent(obj: Record<string, unknown>, ts: string | undefined, s
 
 /** Normalize one transcript line into zero or more events. seenUsage dedups
  * per-message usage across the multiple lines Claude emits for one response. */
-// eslint-disable-next-line complexity -- transcript line normalizer: one branch per message/content shape; keeping the format knowledge in one place is clearer than scattering it.
+// eslint-disable-next-line sonarjs/cognitive-complexity -- transcript line normalizer: one branch per message/content shape; keeping the format knowledge in one place is clearer than scattering it.
 function normalizeLine(obj: Record<string, unknown>, seenUsage: Set<string>): Event[] {
   const events: Event[] = [];
   const typ = asString(obj.type);
@@ -224,6 +225,7 @@ function normalizeLine(obj: Record<string, unknown>, seenUsage: Set<string>): Ev
 }
 
 /** Merge tool_result events into their originating tool_use by id. */
+// eslint-disable-next-line sonarjs/cognitive-complexity -- pairs each tool_use with its tool_result across the flat event stream.
 function mergeToolResults(events: Event[]): Event[] {
   const results = new Map<string, Event>();
   for (const e of events) {
@@ -276,7 +278,7 @@ function readSubagentInfo(path: string): SubagentInfo {
   return info;
 }
 
-// eslint-disable-next-line complexity -- single-pass session reader: assembles events, usage and subagent links from a heterogeneous log; splitting would fragment the one read.
+// eslint-disable-next-line sonarjs/cognitive-complexity -- single-pass session reader: assembles events, usage and subagent links from a heterogeneous log; splitting would fragment the one read.
 async function readSession(path: string): Promise<Session> {
   let cwd: string | undefined;
   let gitBranch: string | undefined;

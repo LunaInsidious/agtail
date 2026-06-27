@@ -50,6 +50,7 @@ function maskSession(s: Session): Session {
  * request (i.e. the path started with /api/), false to defer to static/SPA.
  */
 /** Distinct tool names + cwds across all sessions, for selectable filters. */
+// eslint-disable-next-line sonarjs/cognitive-complexity -- full-scan facet collector: nested loops over adapters → sessions → events to gather distinct tools/cwds/models.
 async function computeFacets(ov: RootOverrides): Promise<{ tools: string[]; cwds: string[]; models: string[] }> {
   const tools = new Set<string>();
   const cwds = new Set<string>();
@@ -74,7 +75,7 @@ export function createApiHandler(opts: ApiOptions = {}) {
   // LiteLLM price sheet, loaded once.
   let prices: ReturnType<typeof loadPriceResolver> | null = null;
 
-  // eslint-disable-next-line complexity -- HTTP route dispatcher: one branch per endpoint; the complexity is breadth, not nesting depth.
+  // eslint-disable-next-line sonarjs/cognitive-complexity -- HTTP route dispatcher: one branch per endpoint; breadth, not nesting depth.
   return async function api(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     if (!url.pathname.startsWith("/api/")) return false;

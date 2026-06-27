@@ -143,6 +143,7 @@ const cwdMatches = (cwd: string | undefined, needles?: string[]) =>
   !needles || !needles.length || needles.some((n) => (cwd ?? "").toLowerCase().includes(n));
 
 /** Stream event-level matches across the selected agents' sessions. */
+// eslint-disable-next-line sonarjs/cognitive-complexity -- match generator: nested scan over sessions × events applying every filter dimension in one pass.
 export async function* searchSessions(f: SearchFilters): AsyncGenerator<Match> {
   const ctx = buildCtx(f);
   let count = 0;
@@ -188,7 +189,7 @@ export async function search(f: SearchFilters): Promise<Match[]> {
 
 /** Session-level search: one entry per matching session, with a representative
  *  snippet and match count. `limit` bounds the number of sessions returned. */
-// eslint-disable-next-line complexity -- match scorer: accumulates per-kind match metadata in a single pass over each session.
+// eslint-disable-next-line sonarjs/cognitive-complexity -- session-level scorer: accumulates per-kind match metadata in a single pass over each session.
 export async function searchSessionHits(f: SearchFilters): Promise<SessionHit[]> {
   const ctx = buildCtx(f);
   const out: SessionHit[] = [];
