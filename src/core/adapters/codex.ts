@@ -53,7 +53,7 @@ interface Parsed {
   started?: string;
   ended?: string;
   title?: string;
-  automated?: boolean;
+  programmatic?: boolean;
   origin?: string;
 }
 
@@ -87,7 +87,7 @@ async function parse(path: string): Promise<Parsed> {
       // interactive baseline — verify the exact originator for SDK/exec runs.
       const originator = asString(p.originator);
       if (originator && originator !== "codex-tui") {
-        out.automated = true;
+        out.programmatic = true;
         out.origin = originator;
       }
       continue;
@@ -216,7 +216,7 @@ async function readSession(path: string): Promise<Session> {
     messages: parsed.events.length,
     mtime: await mtimeMs(path),
     events: parsed.events,
-    ...(parsed.automated ? { automated: true, origin: parsed.origin } : {}),
+    ...(parsed.programmatic ? { programmatic: true, origin: parsed.origin } : {}),
   };
 }
 

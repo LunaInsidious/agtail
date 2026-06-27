@@ -124,13 +124,13 @@ main { display: flex; flex: 1; min-height: 0; }
 @keyframes slide { from { background-position: -40% 0; } to { background-position: 140% 0; } }
 .sess.child, .hit.child { padding-left: 26px; background: rgba(138,127,176,.05); }
 .sess.child .title, .hit.child .title { -webkit-line-clamp: 1; color: var(--muted); }
-/* Archived/automated: de-emphasise the whole row; the 🗄/🤖 marker carries the
+/* Archived/programmatic: de-emphasise the whole row; the 🗄/🤖 marker carries the
    meaning. */
 .sess.dim, .hit.dim { opacity: .6; }
 .sess.dim:hover, .hit.dim:hover, .sess.dim.active, .hit.dim.active { opacity: 1; }
 .archmark { font-size: 10px; opacity: .85; }
 .meta .archmark { color: var(--muted); }
-/* Automated origin: a small labelled pill so "what made this" reads at a glance. */
+/* Programmatic origin: a small labelled pill so "what made this" reads at a glance. */
 .automark {
   font-size: 10px; color: var(--think); border: 1px solid var(--think); border-radius: 4px;
   padding: 0 4px; white-space: nowrap;

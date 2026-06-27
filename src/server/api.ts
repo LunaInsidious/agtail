@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { Agent, ArchivedFilter, AutomatedFilter, EventKind, Session } from "../core/types.js";
+import type { Agent, ArchivedFilter, ProgrammaticFilter, EventKind, Session } from "../core/types.js";
 import { AGENTS } from "../core/types.js";
 import type { RootOverrides } from "../core/adapters/types.js";
 import { findAllSessions, resolveSession, selectAdapters } from "../core/adapters/index.js";
@@ -24,7 +24,7 @@ function parseArchived(v: string | null): ArchivedFilter {
   return v === "only" || v === "none" ? v : "all";
 }
 
-function parseAutomated(v: string | null): AutomatedFilter {
+function parseProgrammatic(v: string | null): ProgrammaticFilter {
   return v === "only" || v === "none" ? v : "all";
 }
 
@@ -86,7 +86,7 @@ export function createApiHandler(opts: ApiOptions = {}) {
           parseAgents(q.get("agent")),
           ov,
           parseArchived(q.get("archived")),
-          parseAutomated(q.get("automated")),
+          parseProgrammatic(q.get("programmatic")),
           q.getAll("model").filter(Boolean),
         );
         const projs = q.getAll("project").filter(Boolean).map((p) => p.toLowerCase());
@@ -133,7 +133,7 @@ export function createApiHandler(opts: ApiOptions = {}) {
           until: q.get("until") ?? undefined,
           kinds: (q.get("kind")?.split(",").filter(Boolean) as EventKind[]) || undefined,
           archived: parseArchived(q.get("archived")),
-          automated: parseAutomated(q.get("automated")),
+          programmatic: parseProgrammatic(q.get("programmatic")),
           mask: q.get("mask") === "1" || Boolean(opts.mask),
           limit: q.get("limit") ? Number(q.get("limit")) : defaultLimit,
           overrides: ov,

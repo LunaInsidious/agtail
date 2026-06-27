@@ -18,10 +18,10 @@ import {
 // Search context carried from a hit into the opened session's in-view search.
 type Seed = { find: string; tool?: string };
 
-// Human-readable label for an automated session's launch origin (Claude's
+// Human-readable label for a programmatic session's launch origin (Claude's
 // entrypoint or Codex's originator), so "what is this?" is answerable at a glance.
 function originLabel(origin?: string): string {
-  if (!origin) return "automated";
+  if (!origin) return "programmatic";
   const o = origin.toLowerCase();
   if (o.startsWith("sdk")) {
     if (o.includes("py")) return "Agent SDK (Python)";
@@ -32,8 +32,8 @@ function originLabel(origin?: string): string {
   if (o === "claude-desktop") return "Desktop app";
   return origin; // e.g. a Codex originator name
 }
-const AUTOMATED_TIP =
-  "Automated session — launched programmatically via the Agent SDK (a hook, plugin, or script), not typed by a person.";
+const PROGRAMMATIC_TIP =
+  "Programmatic session — launched by tooling (the Agent SDK, a hook, plugin, script, or the desktop app), not typed interactively by a person.";
 
 const homeShort = (p: string) => p.replace(/^\/Users\/[^/]+/, "~").replace(/^\/home\/[^/]+/, "~");
 
@@ -116,7 +116,7 @@ const emptyFilters: Filters = {
   kinds: [],
   mask: false,
   archived: "all",
-  automated: "all",
+  programmatic: "all",
 };
 
 // Filter/search state lives in the browser's history entry (history.state), not
@@ -174,13 +174,13 @@ export function App() {
     set({ archived: active && !archived ? "none" : archived && !active ? "only" : "all" });
   };
 
-  // Origin filter (human vs automated), same none/both = all idiom.
-  const toggleOrigin = (k: "human" | "automated") => {
-    let human = filters.automated === "none";
-    let automated = filters.automated === "only";
-    if (k === "human") human = !human;
-    else automated = !automated;
-    set({ automated: human && !automated ? "none" : automated && !human ? "only" : "all" });
+  // Origin filter (interactive vs programmatic), same none/both = all idiom.
+  const toggleOrigin = (k: "interactive" | "programmatic") => {
+    let interactive = filters.programmatic === "none";
+    let programmatic = filters.programmatic === "only";
+    if (k === "interactive") interactive = !interactive;
+    else programmatic = !programmatic;
+    set({ programmatic: interactive && !programmatic ? "none" : programmatic && !interactive ? "only" : "all" });
   };
 
   // Close the filter popover on outside click. The ref wraps button + popover so
@@ -214,16 +214,16 @@ export function App() {
       label: filters.archived === "only" ? "🗄 archived" : "active only",
       onRemove: () => set({ archived: "all" }),
     });
-  if (filters.automated !== "all")
+  if (filters.programmatic !== "all")
     chips.push({
       key: "origin",
-      label: filters.automated === "only" ? "🤖 automated" : "human only",
-      onRemove: () => set({ automated: "all" }),
+      label: filters.programmatic === "only" ? "🤖 programmatic" : "interactive only",
+      onRemove: () => set({ programmatic: "all" }),
     });
   if (filters.mask) chips.push({ key: "mask", label: "🔒 mask", onRemove: () => set({ mask: false }) });
 
   const clearAll = () =>
-    set({ agents: [], tools: [], models: [], cwds: [], since: "", until: "", archived: "all", automated: "all", mask: false });
+    set({ agents: [], tools: [], models: [], cwds: [], since: "", until: "", archived: "all", programmatic: "all", mask: false });
 
   // Hits are matching sessions. With a finite cap, reaching it means more
   // sessions matched than were returned; "All" (limit 0) never truncates.
@@ -267,7 +267,7 @@ export function App() {
     filters.models.length > 0 ||
     filters.cwds.length > 0 ||
     filters.archived !== "all" ||
-    filters.automated !== "all";
+    filters.programmatic !== "all";
 
   // Browse list: only meaningful with no filter active (results come from the
   // search path). So fetch the full list unfiltered and skip while filtering.
@@ -372,7 +372,7 @@ export function App() {
   const openSig = cur ? `${cur.agent}:${cur.id}` : "";
   const chipSig = JSON.stringify([
     filters.agents, filters.tools, filters.models, filters.cwds, filters.since,
-    filters.until, filters.kinds, filters.mask, filters.archived, filters.automated, limit,
+    filters.until, filters.kinds, filters.mask, filters.archived, filters.programmatic, limit,
   ]);
 
   // On mount, restore the open session recorded in history (filters/limit were
@@ -451,7 +451,7 @@ export function App() {
     filters.kinds.join(","),
     filters.mask,
     filters.archived,
-    filters.automated,
+    filters.programmatic,
     limit,
   ]);
 
@@ -556,13 +556,13 @@ export function App() {
               <div className="frow">
                 <span className="lbl">origin</span>
                 <span className="agents">
-                  <label className={filters.automated === "none" ? "on" : ""}>
-                    <input type="checkbox" checked={filters.automated === "none"} onChange={() => toggleOrigin("human")} />
-                    human
+                  <label className={filters.programmatic === "none" ? "on" : ""}>
+                    <input type="checkbox" checked={filters.programmatic === "none"} onChange={() => toggleOrigin("interactive")} />
+                    interactive
                   </label>
-                  <label className={filters.automated === "only" ? "on" : ""}>
-                    <input type="checkbox" checked={filters.automated === "only"} onChange={() => toggleOrigin("automated")} />
-                    🤖 automated
+                  <label className={filters.programmatic === "only" ? "on" : ""}>
+                    <input type="checkbox" checked={filters.programmatic === "only"} onChange={() => toggleOrigin("programmatic")} />
+                    🤖 programmatic
                   </label>
                 </span>
               </div>
@@ -676,15 +676,15 @@ function SessionRow({
   return (
     <div
       ref={ref}
-      className={"sess" + (child ? " child" : "") + (s.archived || s.automated ? " dim" : "") + (active ? " active" : "")}
+      className={"sess" + (child ? " child" : "") + (s.archived || s.programmatic ? " dim" : "") + (active ? " active" : "")}
       onClick={() => onOpen(s.agent, s.id)}
     >
       <div className="row1">
         {child && <span className="branch">↳</span>}
         <span className={"src " + s.agent}>{tag(s.agent)}</span>
         {s.archived && <span className="archmark" title="archived">🗄</span>}
-        {s.automated && (
-          <span className="automark" title={AUTOMATED_TIP}>
+        {s.programmatic && (
+          <span className="automark" title={PROGRAMMATIC_TIP}>
             🤖 {originLabel(s.origin)}
           </span>
         )}
@@ -777,15 +777,15 @@ function HitRow({
   return (
     <div
       ref={ref}
-      className={"hit" + (child ? " child" : "") + (m.archived || m.automated ? " dim" : "") + (active ? " active" : "")}
+      className={"hit" + (child ? " child" : "") + (m.archived || m.programmatic ? " dim" : "") + (active ? " active" : "")}
       onClick={() => onOpen(m.agent, m.sessionId, seed)}
     >
       <div className="row1">
         {child && <span className="branch">↳</span>}
         <span className={"src " + m.agent}>{tag(m.agent)}</span>
         {m.archived && <span className="archmark" title="archived">🗄</span>}
-        {m.automated && (
-          <span className="automark" title={AUTOMATED_TIP}>
+        {m.programmatic && (
+          <span className="automark" title={PROGRAMMATIC_TIP}>
             🤖 {originLabel(m.origin)}
           </span>
         )}
@@ -1041,8 +1041,8 @@ const Timeline = memo(function Timeline({
       <div className="meta">
         <span className={"src " + session.agent}>{tag(session.agent)}</span>
         {session.archived && <span className="archmark" title="archived">🗄 archived</span>}
-        {session.automated && (
-          <span className="automark" title={AUTOMATED_TIP}>
+        {session.programmatic && (
+          <span className="automark" title={PROGRAMMATIC_TIP}>
             🤖 {originLabel(session.origin)}
           </span>
         )}

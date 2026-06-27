@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { fileURLToPath } from "node:url";
 import { codexAdapter } from "../src/core/adapters/codex.js";
 import { claudeCodeAdapter } from "../src/core/adapters/claude-code.js";
-import { matchArchived, matchAutomated } from "../src/core/types.js";
+import { matchArchived, matchProgrammatic } from "../src/core/types.js";
 
-const claudeAuto = fileURLToPath(new URL("./fixtures/claude-automated.jsonl", import.meta.url));
+const claudeAuto = fileURLToPath(new URL("./fixtures/claude-programmatic.jsonl", import.meta.url));
 const claudeHuman = fileURLToPath(new URL("./fixtures/claude-session.jsonl", import.meta.url));
 
 // A Codex CODEX_HOME laid out with both sessions/ and the sibling
@@ -42,27 +42,27 @@ describe("codex adapter archived discovery", () => {
   });
 });
 
-describe("matchAutomated", () => {
-  it("only => keep automated; none => drop automated; all => everything", () => {
-    expect(matchAutomated({ automated: true }, "only")).toBe(true);
-    expect(matchAutomated({ automated: false }, "only")).toBe(false);
-    expect(matchAutomated({ automated: true }, "none")).toBe(false);
-    expect(matchAutomated({ automated: true }, "all")).toBe(true);
+describe("matchProgrammatic", () => {
+  it("only => keep programmatic; none => drop programmatic; all => everything", () => {
+    expect(matchProgrammatic({ programmatic: true }, "only")).toBe(true);
+    expect(matchProgrammatic({ programmatic: false }, "only")).toBe(false);
+    expect(matchProgrammatic({ programmatic: true }, "none")).toBe(false);
+    expect(matchProgrammatic({ programmatic: true }, "all")).toBe(true);
   });
 });
 
-describe("claude adapter automated detection", () => {
-  it("flags SDK-entrypoint sessions as automated, leaves CLI ones unflagged", async () => {
+describe("claude adapter programmatic detection", () => {
+  it("flags SDK-entrypoint sessions as programmatic, leaves CLI ones unflagged", async () => {
     const auto = await claudeCodeAdapter().readSession(claudeAuto);
     const human = await claudeCodeAdapter().readSession(claudeHuman);
-    expect(auto.automated).toBe(true);
-    expect(human.automated).toBeFalsy();
+    expect(auto.programmatic).toBe(true);
+    expect(human.programmatic).toBeFalsy();
   });
 
-  it("flags claude-desktop sessions (background memory/summary jobs) as automated", async () => {
+  it("flags claude-desktop sessions (background memory/summary jobs) as programmatic", async () => {
     const desktop = fileURLToPath(new URL("./fixtures/claude-desktop.jsonl", import.meta.url));
     const sess = await claudeCodeAdapter().readSession(desktop);
-    expect(sess.automated).toBe(true);
+    expect(sess.programmatic).toBe(true);
     expect(sess.origin).toBe("claude-desktop");
   });
 });

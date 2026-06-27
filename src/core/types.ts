@@ -10,7 +10,7 @@ export const AGENTS: Agent[] = ["claude-code", "codex"];
  *  ones with it, or exclude them. Default everywhere is "all". */
 export type TriFilter = "all" | "only" | "none";
 export type ArchivedFilter = TriFilter;
-export type AutomatedFilter = TriFilter;
+export type ProgrammaticFilter = TriFilter;
 
 function matchTri(value: boolean | undefined, f?: TriFilter): boolean {
   if (f === "only") return Boolean(value);
@@ -21,8 +21,8 @@ function matchTri(value: boolean | undefined, f?: TriFilter): boolean {
 /** Whether a session passes an archived filter (default "all" => everything). */
 export const matchArchived = (m: { archived?: boolean }, f?: ArchivedFilter) => matchTri(m.archived, f);
 
-/** Whether a session passes an automated filter (default "all" => everything). */
-export const matchAutomated = (m: { automated?: boolean }, f?: AutomatedFilter) => matchTri(m.automated, f);
+/** Whether a session passes a programmatic filter (default "all" => everything). */
+export const matchProgrammatic = (m: { programmatic?: boolean }, f?: ProgrammaticFilter) => matchTri(m.programmatic, f);
 
 /** Token usage for one assistant turn (fields optional; agents differ). */
 export interface Usage {
@@ -94,9 +94,9 @@ export interface SessionMeta {
 
   // Machine-driven session (launched via the Agent SDK rather than the
   // interactive CLI/TUI) — hooks, scripts, headless review agents. Lets the UI
-  // de-emphasize/filter automated noise from a human-history view.
-  automated?: boolean;
-  // The raw launch identifier behind `automated`, for a human-readable label:
+  // de-emphasize/filter programmatic noise from a human-history view.
+  programmatic?: boolean;
+  // The raw launch identifier behind `programmatic`, for a human-readable label:
   // Claude's entrypoint ("sdk-py"/"sdk-ts") or Codex's originator. The
   // transcript records HOW it was launched, not which specific tool/plugin.
   origin?: string;
@@ -139,7 +139,7 @@ export interface SessionHit {
   mtime: number;
   models?: string[];
   archived?: boolean;
-  automated?: boolean;
+  programmatic?: boolean;
   origin?: string;
   // Subagent linkage, so search results can nest a matched child under its
   // matched parent (and show an unmatched-parent child standalone).

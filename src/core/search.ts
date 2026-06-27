@@ -1,5 +1,5 @@
-import type { Agent, ArchivedFilter, AutomatedFilter, Event, EventKind, Match, Session, SessionHit } from "./types.js";
-import { matchArchived, matchAutomated } from "./types.js";
+import type { Agent, ArchivedFilter, ProgrammaticFilter, Event, EventKind, Match, Session, SessionHit } from "./types.js";
+import { matchArchived, matchProgrammatic } from "./types.js";
 import type { RootOverrides } from "./adapters/types.js";
 import { findAllSessions, selectAdapters } from "./adapters/index.js";
 import { toolSearchText } from "./format.js";
@@ -27,8 +27,8 @@ export interface SearchFilters {
   mask?: boolean;
   /** Treat archived sessions: include all (default), only, or exclude. */
   archived?: ArchivedFilter;
-  /** Treat automated (SDK-driven) sessions: include all (default), only, exclude. */
-  automated?: AutomatedFilter;
+  /** Treat programmatic (SDK-driven) sessions: include all (default), only, exclude. */
+  programmatic?: ProgrammaticFilter;
   /** Stop after this many matches (0/undefined = no limit). */
   limit?: number;
   overrides?: RootOverrides;
@@ -138,7 +138,7 @@ export async function* searchSessions(f: SearchFilters): AsyncGenerator<Match> {
   for (const adapter of selectAdapters(f.agents, f.overrides)) {
     const metas = (await adapter.findSessions()).sort((a, b) => b.mtime - a.mtime);
     for (const meta of metas) {
-      if (!matchArchived(meta, f.archived) || !matchAutomated(meta, f.automated)) continue;
+      if (!matchArchived(meta, f.archived) || !matchProgrammatic(meta, f.programmatic)) continue;
       if (!matchModels(meta, f.models)) continue;
       if (!cwdMatches(meta.cwd, ctx.cwdNeedles)) continue;
       let session: Session;
@@ -183,7 +183,7 @@ export async function searchSessionHits(f: SearchFilters): Promise<SessionHit[]>
   for (const adapter of selectAdapters(f.agents, f.overrides)) {
     const metas = (await adapter.findSessions()).sort((a, b) => b.mtime - a.mtime);
     for (const meta of metas) {
-      if (!matchArchived(meta, f.archived) || !matchAutomated(meta, f.automated)) continue;
+      if (!matchArchived(meta, f.archived) || !matchProgrammatic(meta, f.programmatic)) continue;
       if (!matchModels(meta, f.models)) continue;
       if (!cwdMatches(meta.cwd, ctx.cwdNeedles)) continue;
       let session: Session;
@@ -211,7 +211,7 @@ export async function searchSessionHits(f: SearchFilters): Promise<SessionHit[]>
         mtime: session.mtime,
         models: meta.models,
         archived: meta.archived,
-        automated: meta.automated,
+        programmatic: meta.programmatic,
         origin: meta.origin,
         isSubagent: meta.isSubagent,
         parentId: meta.parentId,

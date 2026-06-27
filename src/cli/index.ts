@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { homedir } from "node:os";
-import type { Agent, ArchivedFilter, AutomatedFilter, EventKind, TriFilter } from "../core/types.js";
+import type { Agent, ArchivedFilter, ProgrammaticFilter, EventKind, TriFilter } from "../core/types.js";
 import { AGENTS } from "../core/types.js";
 import type { RootOverrides } from "../core/adapters/types.js";
 import { findAllSessions, resolveSession } from "../core/adapters/index.js";
@@ -19,10 +19,10 @@ interface GlobalOpts {
   codexDir?: string;
   mask?: boolean;
   archived?: string; // "all" (default) | "only" | "none"
-  automated?: string; // "all" (default) | "only" | "none"
+  programmatic?: string; // "all" (default) | "only" | "none"
 }
 
-// Included by default; only|none narrows. Shared by --archived / --automated.
+// Included by default; only|none narrows. Shared by --archived / --programmatic.
 function triFilter(flag: string, v: string | undefined): TriFilter {
   if (v === "only" || v === "none") return v;
   if (v != null && v !== "all") {
@@ -32,7 +32,7 @@ function triFilter(flag: string, v: string | undefined): TriFilter {
   return "all";
 }
 const archivedFilter = (o: GlobalOpts): ArchivedFilter => triFilter("--archived", o.archived);
-const automatedFilter = (o: GlobalOpts): AutomatedFilter => triFilter("--automated", o.automated);
+const programmaticFilter = (o: GlobalOpts): ProgrammaticFilter => triFilter("--programmatic", o.programmatic);
 
 function overrides(o: GlobalOpts): RootOverrides {
   const ov: RootOverrides = {};
@@ -68,7 +68,7 @@ async function cmdGrep(pattern: string | undefined, opts: any, global: GlobalOpt
     until: opts.until,
     kinds: opts.kind ? (opts.kind.split(",") as EventKind[]) : undefined,
     archived: archivedFilter(global),
-    automated: automatedFilter(global),
+    programmatic: programmaticFilter(global),
     mask: global.mask,
     limit: opts.limit ? Number(opts.limit) : undefined,
     overrides: overrides(global),
@@ -96,7 +96,7 @@ async function cmdGrep(pattern: string | undefined, opts: any, global: GlobalOpt
 
 // --- list --------------------------------------------------------------------
 async function cmdList(opts: any, global: GlobalOpts) {
-  const all = await findAllSessions(parseAgents(opts.agent), overrides(global), archivedFilter(global), automatedFilter(global));
+  const all = await findAllSessions(parseAgents(opts.agent), overrides(global), archivedFilter(global), programmaticFilter(global));
   const proj = opts.project?.toLowerCase();
   const pass = (m: (typeof all)[number]) =>
     (!proj || (m.cwd ?? "").toLowerCase().includes(proj)) &&
@@ -121,7 +121,7 @@ async function cmdList(opts: any, global: GlobalOpts) {
     const name = m.isSubagent && m.agentName ? color(`[${m.agentName}] `, "violet") : "";
     const arch =
       (m.archived ? color("🗄 archived ", "dim") : "") +
-      (m.automated ? color(`🤖 ${m.origin ?? "automated"} `, "dim") : "");
+      (m.programmatic ? color(`🤖 ${m.origin ?? "programmatic"} `, "dim") : "");
     console.log(
       `${lead}${tag} ${sid}  ${when}  ${color(String(m.messages).padStart(4), "dim")} ev  ${color(tilde(m.cwd), "cyan")}`,
     );
@@ -151,7 +151,7 @@ async function cmdShow(id: string, opts: any, global: GlobalOpts) {
   console.log(
     color(`${agentTag(sess.agent)} · ${sess.id}`, "bold") +
       (sess.archived ? color("  🗄 archived", "dim") : "") +
-      (sess.automated ? color(`  🤖 ${sess.origin ?? "automated"}`, "dim") : ""),
+      (sess.programmatic ? color(`  🤖 ${sess.origin ?? "programmatic"}`, "dim") : ""),
   );
   if (sess.isSubagent) {
     console.log(color(`  ↳ subagent (${sess.agentName ?? "?"}) of ${sess.parentId}`, "violet"));
@@ -204,7 +204,7 @@ async function cmdStats(id: string | undefined, opts: any, global: GlobalOpts) {
   const sessions = id
     ? [await resolveSession(id, agents, ov)].filter(Boolean)
     : await Promise.all(
-        (await findAllSessions(agents, ov, archivedFilter(global), automatedFilter(global)))
+        (await findAllSessions(agents, ov, archivedFilter(global), programmaticFilter(global)))
           .filter((m) => !opts.project || (m.cwd ?? "").toLowerCase().includes(opts.project.toLowerCase()))
           .map((m) => resolveSession(m.id, [m.agent], ov)),
       );
@@ -254,7 +254,7 @@ program
   .option("--claude-dir <path>", "override Claude Code root (~/.claude/projects)")
   .option("--codex-dir <path>", "override Codex sessions root (~/.codex/sessions)")
   .option("--archived <mode>", "archived sessions: all (default) | only | none", "all")
-  .option("--automated <mode>", "automated (SDK-driven) sessions: all (default) | only | none", "all")
+  .option("--programmatic <mode>", "programmatic (SDK-driven) sessions: all (default) | only | none", "all")
   .option("--mask", "redact secrets in output");
 
 const g = (): GlobalOpts => program.opts();

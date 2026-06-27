@@ -330,7 +330,7 @@ async function readSession(path: string): Promise<Session> {
   // "claude-desktop" — memory/summarisation tasks, never interactive typing;
   // interactive coding is entrypoint "cli"). promptSource alone is unreliable:
   // older versions don't stamp "typed" even on real human turns.
-  const automated =
+  const programmatic =
     (entrypoint != null && (entrypoint.startsWith("sdk") || entrypoint === "claude-desktop")) || sdkPrompt;
   const isSubagent = SUBAGENT_RE.test(path);
   const sub = isSubagent ? readSubagentInfo(path) : undefined;
@@ -359,7 +359,7 @@ async function readSession(path: string): Promise<Session> {
     messages,
     mtime: await mtimeMs(path),
     events,
-    ...(automated ? { automated: true, origin: entrypoint } : {}),
+    ...(programmatic ? { programmatic: true, origin: entrypoint } : {}),
     ...(isSubagent && sub
       ? {
           isSubagent: true,
