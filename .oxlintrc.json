@@ -46,14 +46,6 @@
       }
     },
     {
-      // Known-large legacy containers — grandfathered above the 400 default.
-      // Ratchet these down over time; new files must stay under 400.
-      "files": ["src/web/App.tsx", "src/web/components/Timeline.tsx"],
-      "rules": {
-        "max-lines": ["error", { "max": 560, "skipBlankLines": true, "skipComments": true }]
-      }
-    },
-    {
       "files": ["test/**", "e2e/**"],
       "rules": {
         "max-lines": "off",

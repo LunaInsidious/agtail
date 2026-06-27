@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { apiFacets, apiSearch, apiSessions, type Filters, type SessionHit, type SessionMeta } from "./lib/api.js";
-import { filterChips, homeShort, tag } from "./lib/filters.js";
-import { AGENTS, LIMIT_OPTIONS, readHistory } from "./lib/state.js";
-import { CheckList } from "./components/CheckList.js";
+import { filterChips } from "./lib/filters.js";
+import { readHistory } from "./lib/state.js";
+import { FilterPanel } from "./components/FilterPanel.js";
 import { ManageSaved } from "./components/ManageSaved.js";
+import { SavedMenu } from "./components/SavedMenu.js";
 import { HitList, SessionList } from "./components/SessionList.js";
 import { Timeline } from "./components/Timeline.js";
 import { useOpenSession } from "./hooks/useOpenSession.js";
@@ -325,67 +326,17 @@ export function App() {
             ★ {activeSaved ? activeSaved.name : `Saved${saved.length ? ` (${saved.length})` : ""}`}
           </button>
           {showSaved && (
-            <div className="filterpop savedpop">
-              {saved.length === 0 && (
-                <div className="savedempty">
-                  No saved searches yet. Save a set of filters/search to recall it in one click — handy for recurring
-                  checks &amp; audits.
-                </div>
-              )}
-              {saved.map((s) => (
-                <button
-                  type="button"
-                  className={"savedapply" + (s.id === activeSaved?.id ? " on" : "")}
-                  key={s.id}
-                  onClick={() => applySaved(s)}
-                  title="apply this search"
-                >
-                  ★ {s.name}
-                </button>
-              ))}
-              {namingDraft === null ? (
-                // Custom tooltip on the wrapper (the disabled button can't hover);
-                // instant, unlike the native `title` which has a fixed ~1-2s delay.
-                <span className="savecurwrap">
-                  <button
-                    type="button"
-                    className="savecur"
-                    disabled={!anyFilter || !!activeSaved}
-                    onClick={startNaming}
-                  >
-                    ＋ Save current search
-                  </button>
-                  {(!anyFilter || activeSaved) && (
-                    <span className="tip">
-                      {activeSaved
-                        ? `✓ These conditions are already saved as “${activeSaved.name}”.`
-                        : "💡 Apply a filter or search first — then you can save it here."}
-                    </span>
-                  )}
-                </span>
-              ) : (
-                <div className="naming">
-                  <input
-                    className="nameinput"
-                    autoFocus
-                    value={namingDraft}
-                    onFocus={(e) => e.currentTarget.select()}
-                    onChange={(e) => setNamingDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") commitSave();
-                      else if (e.key === "Escape") setNamingDraft(null);
-                    }}
-                    aria-label="save search as"
-                  />
-                  <button type="button" className="namesave" onClick={commitSave}>
-                    Save
-                  </button>
-                </div>
-              )}
-              <button type="button" className="savemanage" onClick={openManage}>
-                Manage saved searches →
-              </button>
-            </div>
+            <SavedMenu
+              saved={saved}
+              activeSaved={activeSaved}
+              anyFilter={anyFilter}
+              namingDraft={namingDraft}
+              setNamingDraft={setNamingDraft}
+              applySaved={applySaved}
+              startNaming={startNaming}
+              commitSave={commitSave}
+              openManage={openManage}
+            />
           )}
         </div>
         <div className="filtermenu" ref={popRef}>
@@ -397,131 +348,17 @@ export function App() {
             ⊕ Filters{chips.length ? ` (${chips.length})` : ""}
           </button>
           {showFilters && (
-            <div className="filterpop">
-              <CheckList
-                label="tool"
-                options={[
-                  ...(facets.tools.some((t) => t.startsWith("mcp__"))
-                    ? [{ value: "mcp__*", label: "mcp__* (all MCP)" }]
-                    : []),
-                  ...facets.tools.map((t) => ({ value: t, label: t })),
-                ]}
-                selected={filters.tools}
-                onChange={(tools) => set({ tools })}
-              />
-              <CheckList
-                label="model"
-                options={facets.models.map((m) => ({ value: m, label: m }))}
-                selected={filters.models}
-                onChange={(models) => set({ models })}
-              />
-              <CheckList
-                label="project (cwd)"
-                options={facets.cwds.map((c) => ({ value: c, label: homeShort(c) }))}
-                selected={filters.cwds}
-                onChange={(cwds) => set({ cwds })}
-              />
-              <div className="frow">
-                <span className="lbl">date range</span>
-                <div className="dates">
-                  <input
-                    type="date"
-                    value={filters.since}
-                    onChange={(e) => set({ since: e.target.value })}
-                    title="since"
-                  />
-                  <input
-                    type="date"
-                    value={filters.until}
-                    onChange={(e) => set({ until: e.target.value })}
-                    title="until"
-                  />
-                </div>
-              </div>
-              <div className="frow">
-                <span className="lbl">agent</span>
-                <span className="agents">
-                  {AGENTS.map((a) => (
-                    <label key={a} className={filters.agents.includes(a) ? "on" : ""}>
-                      <input
-                        type="checkbox"
-                        checked={filters.agents.includes(a)}
-                        onChange={(e) =>
-                          set({
-                            agents: e.target.checked ? [...filters.agents, a] : filters.agents.filter((x) => x !== a),
-                          })
-                        }
-                      />
-                      {tag(a)}
-                    </label>
-                  ))}
-                </span>
-              </div>
-              <div className="frow">
-                <span className="lbl">status</span>
-                <span className="agents">
-                  <label className={filters.archived === "none" ? "on" : ""}>
-                    <input
-                      type="checkbox"
-                      checked={filters.archived === "none"}
-                      onChange={() => toggleStatus("active")}
-                    />
-                    active
-                  </label>
-                  <label className={filters.archived === "only" ? "on" : ""}>
-                    <input
-                      type="checkbox"
-                      checked={filters.archived === "only"}
-                      onChange={() => toggleStatus("archived")}
-                    />
-                    🗄 archived
-                  </label>
-                </span>
-              </div>
-              <div className="frow">
-                <span className="lbl">origin</span>
-                <span className="agents">
-                  <label className={filters.programmatic === "none" ? "on" : ""}>
-                    <input
-                      type="checkbox"
-                      checked={filters.programmatic === "none"}
-                      onChange={() => toggleOrigin("interactive")}
-                    />
-                    interactive
-                  </label>
-                  <label className={filters.programmatic === "only" ? "on" : ""}>
-                    <input
-                      type="checkbox"
-                      checked={filters.programmatic === "only"}
-                      onChange={() => toggleOrigin("programmatic")}
-                    />
-                    🤖 programmatic
-                  </label>
-                </span>
-              </div>
-              <div className="frow">
-                <span className="lbl">output</span>
-                <label className="mask">
-                  <input type="checkbox" checked={filters.mask} onChange={(e) => set({ mask: e.target.checked })} />
-                  Mask secrets
-                </label>
-              </div>
-              <div className="frow">
-                <span className="lbl">max results</span>
-                <select value={limit} onChange={(e) => setLimit(Number(e.target.value))}>
-                  {LIMIT_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {chips.length > 0 && (
-                <button type="button" className="clear" onClick={clearAll}>
-                  Clear all
-                </button>
-              )}
-            </div>
+            <FilterPanel
+              filters={filters}
+              facets={facets}
+              limit={limit}
+              setLimit={setLimit}
+              set={set}
+              toggleStatus={toggleStatus}
+              toggleOrigin={toggleOrigin}
+              clearAll={clearAll}
+              chipCount={chips.length}
+            />
           )}
         </div>
         {chips.length > 0 && (
