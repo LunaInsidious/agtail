@@ -12,28 +12,36 @@ concurrency:
 
 jobs:
   check:
-    name: typecheck · lint · format · unit
+    name: check (node ${{ matrix.node }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24, 26] # LTS floor (engines >=22), current LTS, next
     steps:
       - uses: actions/checkout@v4
       # corepack provides pnpm from the packageManager field — no third-party action.
       - run: corepack enable
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: ${{ matrix.node }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
 
   e2e:
-    name: e2e (playwright)
+    name: e2e (node ${{ matrix.node }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24, 26]
     steps:
       - uses: actions/checkout@v4
       - run: corepack enable
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: ${{ matrix.node }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # Install the Chrome channel the Playwright config targets (channel: "chrome").
