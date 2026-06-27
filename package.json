@@ -21,13 +21,15 @@
     "dev:web": "vite",
     "dev:cli": "tsx src/cli/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "commander": "^12.1.0",
     "react-virtuoso": "^4.18.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/node": "^22.10.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
