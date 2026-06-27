@@ -1,0 +1,2 @@
+{"type":"user","uuid":"d1","timestamp":"2026-06-24T04:00:00.000Z","cwd":"/private/tmp","gitBranch":"main","version":"2.1.175","entrypoint":"claude-desktop","userType":"external","message":{"role":"user","content":"Apply maximum non-destructive compression."}}
+{"type":"assistant","uuid":"d2","timestamp":"2026-06-24T04:00:01.000Z","entrypoint":"claude-desktop","message":{"model":"claude-opus-4-8","role":"assistant","content":[{"type":"text","text":"Compressed."}]}}

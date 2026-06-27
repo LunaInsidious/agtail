@@ -29,6 +29,7 @@ function originLabel(origin?: string): string {
     if (o.includes("cli")) return "Agent SDK (CLI)";
     return "Agent SDK";
   }
+  if (o === "claude-desktop") return "Desktop app";
   return origin; // e.g. a Codex originator name
 }
 const AUTOMATED_TIP =

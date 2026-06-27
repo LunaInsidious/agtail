@@ -58,4 +58,11 @@ describe("claude adapter automated detection", () => {
     expect(auto.automated).toBe(true);
     expect(human.automated).toBeFalsy();
   });
+
+  it("flags claude-desktop sessions (background memory/summary jobs) as automated", async () => {
+    const desktop = fileURLToPath(new URL("./fixtures/claude-desktop.jsonl", import.meta.url));
+    const sess = await claudeCodeAdapter().readSession(desktop);
+    expect(sess.automated).toBe(true);
+    expect(sess.origin).toBe("claude-desktop");
+  });
 });

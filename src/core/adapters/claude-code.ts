@@ -317,9 +317,13 @@ async function readSession(path: string): Promise<Session> {
 
   const events = mergeToolResults(raw);
   // Machine-driven sessions: launched via the Agent SDK (entrypoint "sdk-cli"/
-  // "sdk-py"/…) or carrying a programmatically-submitted turn (promptSource
-  // "sdk"). Interactive "cli"/"claude-desktop" turns are promptSource "typed".
-  const automated = (entrypoint != null && entrypoint.startsWith("sdk")) || sdkPrompt;
+  // "sdk-py"/…), carrying a programmatically-submitted turn (promptSource
+  // "sdk"), or run by the desktop app's background jobs (entrypoint
+  // "claude-desktop" — memory/summarisation tasks, never interactive typing;
+  // interactive coding is entrypoint "cli"). promptSource alone is unreliable:
+  // older versions don't stamp "typed" even on real human turns.
+  const automated =
+    (entrypoint != null && (entrypoint.startsWith("sdk") || entrypoint === "claude-desktop")) || sdkPrompt;
   const isSubagent = SUBAGENT_RE.test(path);
   const sub = isSubagent ? readSubagentInfo(path) : undefined;
   // For a subagent, the task description is a clearer title than the raw
