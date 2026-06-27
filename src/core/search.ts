@@ -13,6 +13,7 @@ import type { RootOverrides } from "./adapters/types.js";
 import { findAllSessions, selectAdapters } from "./adapters/index.js";
 import { toolSearchText } from "./format.js";
 import { mask } from "./mask.js";
+import { collect } from "./utils.js";
 
 export interface SearchFilters {
   /** Text to match. Empty => match any event (filter-only search). */
@@ -182,9 +183,7 @@ export async function* searchSessions(f: SearchFilters): AsyncGenerator<Match> {
 
 /** Collect all event-level matches into an array. */
 export async function search(f: SearchFilters): Promise<Match[]> {
-  const out: Match[] = [];
-  for await (const m of searchSessions(f)) out.push(m);
-  return out;
+  return collect(searchSessions(f));
 }
 
 /** Session-level search: one entry per matching session, with a representative

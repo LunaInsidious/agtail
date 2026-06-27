@@ -4,6 +4,8 @@ import type { Event, Session, SessionMeta, Usage } from "../types.js";
 import { iterJsonl } from "../jsonl.js";
 import { hasContent } from "../format.js";
 import { expandHome, mtimeMs, walkFiles } from "../walk.js";
+import { collect, isRecord, obj, str } from "../utils.js";
+import { firstLine } from "./utils.js";
 
 // OpenAI Codex CLI (v0.14x) stores one rollout JSONL per thread under
 // ~/.codex/sessions/YYYY/MM/DD/rollout-<ts>-<id>.jsonl. A sibling SQLite DB
@@ -19,22 +21,19 @@ import { expandHome, mtimeMs, walkFiles } from "../walk.js";
 
 const DEFAULT_ROOT = "~/.codex/sessions";
 
-function asString(v: unknown): string {
-  return typeof v === "string" ? v : "";
-}
-function asRecord(v: unknown): Record<string, unknown> {
-  return v && typeof v === "object" ? (v as Record<string, unknown>) : {};
-}
 function joinCommand(cmd: unknown): string {
   if (Array.isArray(cmd)) return cmd.map((c) => String(c)).join(" ");
-  return asString(cmd);
+  return str(cmd);
 }
 
 /** Map Codex token usage (cached is a subset of input) to agtail Usage. */
 function usageFrom(info: unknown): Usage | undefined {
-  const last = asRecord(asRecord(info).last_token_usage);
+  const last = obj(obj(info).last_token_usage);
   if (Object.keys(last).length === 0) return undefined;
-  const n = (k: string) => (typeof last[k] === "number" ? (last[k] as number) : 0);
+  const n = (k: string): number => {
+    const v = last[k];
+    return typeof v === "number" ? v : 0;
+  };
   const cached = n("cached_input_tokens");
   return {
     inputTokens: Math.max(0, n("input_tokens") - cached),
@@ -57,123 +56,152 @@ interface Parsed {
   origin?: string;
 }
 
-// eslint-disable-next-line sonarjs/cognitive-complexity -- rollout parser: one branch per record kind; inherently branchy. Top candidate for future extraction.
-async function parse(path: string): Promise<Parsed> {
-  const events: Event[] = [];
-  const pending = new Map<string, Event>(); // call_id -> tool_use awaiting result
-  let lastAssistant: Event | undefined;
-  let curModel: string | undefined; // model of the current turn (updated per turn_context)
-  const models: string[] = []; // distinct models, first-seen order
-  const out: Parsed = { events, models };
+// Codex rollout parsing in two pure passes: materialize the JSONL lines into
+// typed records, then derive the metadata and event list from them — no mutable
+// accumulators, no in-place back-patching.
 
-  for await (const obj of iterJsonl(path)) {
-    const ts = asString(obj.timestamp) || undefined;
-    if (ts) {
-      out.started ??= ts;
-      out.ended = ts;
-    }
-    const type = asString(obj.type);
-    const p = asRecord(obj.payload);
+type Rec = { ts?: string; type: string; p: Record<string, unknown>; raw: Record<string, unknown> };
 
-    if (type === "session_meta") {
-      // A resumed/forked rollout records the ORIGINAL conversation in
-      // `session_id` but gets its own unique `id`. Identify by the rollout's own
-      // `id` so a fork doesn't collapse onto — and duplicate — the original
-      // session's id (a dup id breaks list keys / dedup downstream).
-      out.id ??= asString(p.id) || asString(p.session_id) || undefined;
-      out.cwd ??= asString(p.cwd) || undefined;
-      out.version ??= asString(p.cli_version) || undefined;
-      // Interactive Codex runs as the TUI (originator "codex-tui"). Anything else
-      // (SDK / `codex exec` / scripted) is machine-driven. NOTE: inferred from the
-      // interactive baseline — verify the exact originator for SDK/exec runs.
-      const originator = asString(p.originator);
-      if (originator && originator !== "codex-tui") {
-        out.programmatic = true;
-        out.origin = originator;
-      }
-      continue;
-    }
-    if (type === "turn_context") {
-      const mm = asString(p.model) || undefined;
-      if (mm) {
-        curModel = mm;
-        out.model ??= mm;
-        if (!models.includes(mm)) models.push(mm);
-      }
-      continue;
-    }
+const isMsg = (r: Rec, sub: string): boolean => r.type === "event_msg" && str(r.p.type) === sub;
 
+// Token usage is reported by the token_count line that follows an assistant
+// message, carrying the current turn's model. One O(n) forward pass keyed by the
+// assistant's record index — the cursor object is the one bit of running state we
+// keep, which reads clearer here than a pure per-message lookahead (and stays O(n)).
+function usageByIndex(rec: Rec[], fallbackModel?: string): Map<number, { usage: Usage; model?: string }> {
+  const byIndex = new Map<number, { usage: Usage; model?: string }>();
+  const cursor = { assistantAt: -1, model: fallbackModel };
+  rec.forEach((r, i) => {
+    if (r.type === "turn_context") cursor.model = str(r.p.model) || cursor.model;
+    else if (isMsg(r, "agent_message")) cursor.assistantAt = i;
+    else if (isMsg(r, "token_count")) {
+      const usage = usageFrom(r.p.info);
+      if (usage && cursor.assistantAt >= 0) byIndex.set(cursor.assistantAt, { usage, model: cursor.model });
+    }
+  });
+  return byIndex;
+}
+
+function toEvents(
+  rec: Rec[],
+  outputs: Map<string, { isError: boolean; text: string }>,
+  calledIds: Set<string>,
+  usageMap: Map<number, { usage: Usage; model?: string }>,
+): Event[] {
+  // eslint-disable-next-line sonarjs/cognitive-complexity -- one branch per record kind; the branching is breadth over the rollout shapes.
+  return rec.flatMap((r, i): Event[] => {
+    const { ts, p } = r;
     // Tool calls live in the response_item stream as function_call /
     // function_call_output (the OpenAI Responses shape), joined by call_id.
-    if (type === "response_item") {
-      const sub = asString(p.type);
+    if (r.type === "response_item") {
+      const sub = str(p.type);
       if (sub === "function_call" || sub === "local_shell_call" || sub === "custom_tool_call") {
-        const args = parseArgs(p.arguments) ?? asRecord(p.action);
-        const rawName = asString(p.name) || sub;
+        const args = parseArgs(p.arguments) ?? obj(p.action);
+        const rawName = str(p.name) || sub;
         const tool = rawName === "exec_command" || rawName === "shell" || sub === "local_shell_call" ? "exec" : rawName;
-        const callId = asString(p.call_id) || asString(p.id);
-        pending.set(callId, pushTool(events, ts, tool, normalizeToolInput(args)));
-      } else if (sub === "function_call_output" || sub === "custom_tool_call_output") {
-        const callId = asString(p.call_id);
-        const text = outputText(p.output);
-        const m = text.match(/exited with code (\d+)/);
-        const isError = m ? m[1] !== "0" : false;
-        const tu = pending.get(callId);
-        if (tu) tu.result = { isError, text };
-        else events.push({ kind: "tool_result", ts, result: { isError, text } });
-      } else if (sub && sub !== "message" && sub !== "reasoning") {
-        // message duplicates event_msg; reasoning is encrypted. Surface the rest.
-        events.push({ kind: "unknown", ts, text: sub, raw: obj });
+        const result = outputs.get(str(p.call_id) || str(p.id));
+        return [
+          {
+            kind: "tool_use",
+            ts,
+            role: "assistant",
+            tool,
+            input: normalizeToolInput(args),
+            ...(result ? { result } : {}),
+          },
+        ];
       }
-      continue;
+      if (sub === "function_call_output" || sub === "custom_tool_call_output") {
+        // Matched results fold into their call (above); only orphans get a row.
+        const callId = str(p.call_id);
+        return calledIds.has(callId) ? [] : [{ kind: "tool_result", ts, result: outputs.get(callId) }];
+      }
+      // message duplicates event_msg; reasoning is encrypted. Surface the rest.
+      return sub && sub !== "message" && sub !== "reasoning" ? [{ kind: "unknown", ts, text: sub, raw: r.raw }] : [];
     }
-
-    if (type !== "event_msg") continue;
-
-    const sub = asString(p.type);
+    if (r.type !== "event_msg") return [];
+    const sub = str(p.type);
     switch (sub) {
       case "user_message": {
-        const text = asString(p.message);
-        if (text.trim()) {
-          out.title ??= text.split("\n")[0]!.slice(0, 120);
-          events.push({ kind: "text", ts, role: "user", text });
-        }
-        break;
+        const text = str(p.message);
+        return text.trim() ? [{ kind: "text", ts, role: "user", text }] : [];
       }
-      case "agent_message": {
-        const ev: Event = { kind: "text", ts, role: "assistant", text: asString(p.message) };
-        events.push(ev);
-        lastAssistant = ev;
-        break;
-      }
+      case "agent_message":
+        return [{ kind: "text", ts, role: "assistant", text: str(p.message), ...usageMap.get(i) }];
       case "agent_reasoning":
       case "agent_reasoning_raw_content": {
-        const text = asString(p.text) || asString(p.reasoning);
-        if (text.trim()) events.push({ kind: "thinking", ts, role: "assistant", text });
-        break;
+        const text = str(p.text) || str(p.reasoning);
+        return text.trim() ? [{ kind: "thinking", ts, role: "assistant", text }] : [];
       }
-      case "token_count": {
-        const usage = usageFrom(p.info);
-        if (usage && lastAssistant) {
-          lastAssistant.usage = usage;
-          lastAssistant.model = curModel ?? out.model;
-        }
-        break;
-      }
+      case "token_count":
+        return []; // folded into its assistant message via usageByIndex
       default:
         // Ignore streaming deltas and turn bookkeeping; preserve anything else.
-        if (sub.endsWith("_delta") || sub === "task_started" || sub === "task_complete") break;
-        events.push({ kind: "unknown", ts, text: sub, raw: obj });
+        return sub.endsWith("_delta") || sub === "task_started" || sub === "task_complete"
+          ? []
+          : [{ kind: "unknown", ts, text: sub, raw: r.raw }];
     }
-  }
-  return out;
+  });
+}
+
+async function parse(path: string): Promise<Parsed> {
+  const rec: Rec[] = (await collect(iterJsonl(path))).map((line) => ({
+    ts: str(line.timestamp) || undefined,
+    type: str(line.type),
+    p: obj(line.payload),
+    raw: line,
+  }));
+
+  const tss = rec.map((r) => r.ts).filter((t): t is string => !!t);
+  // A resumed/forked rollout records the ORIGINAL conversation in `session_id`
+  // but gets its own unique `id`; identify by the rollout's own `id` so a fork
+  // doesn't collapse onto — and duplicate — the original's id.
+  const meta = rec.find((r) => r.type === "session_meta")?.p ?? {};
+  // Interactive Codex runs as the TUI (originator "codex-tui"); anything else
+  // (SDK / `codex exec` / scripted) is machine-driven.
+  const originator = str(meta.originator);
+  const models = [
+    ...new Set(
+      rec
+        .filter((r) => r.type === "turn_context")
+        .map((r) => str(r.p.model))
+        .filter(Boolean),
+    ),
+  ];
+  const firstUser = rec.find((r) => isMsg(r, "user_message") && str(r.p.message).trim());
+
+  const isOut = (r: Rec) =>
+    r.type === "response_item" && ["function_call_output", "custom_tool_call_output"].includes(str(r.p.type));
+  const isCall = (r: Rec) =>
+    r.type === "response_item" && ["function_call", "local_shell_call", "custom_tool_call"].includes(str(r.p.type));
+  const outputs = new Map(
+    rec.filter(isOut).map((r) => {
+      const text = outputText(r.p.output);
+      const m = text.match(/exited with code (\d+)/);
+      return [str(r.p.call_id), { isError: m ? m[1] !== "0" : false, text }] as const;
+    }),
+  );
+  const calledIds = new Set(rec.filter(isCall).map((r) => str(r.p.call_id) || str(r.p.id)));
+
+  return {
+    events: toEvents(rec, outputs, calledIds, usageByIndex(rec, models[0])),
+    models,
+    id: str(meta.id) || str(meta.session_id) || undefined,
+    cwd: str(meta.cwd) || undefined,
+    version: str(meta.cli_version) || undefined,
+    model: models[0],
+    started: tss[0],
+    ended: tss.at(-1),
+    title: firstUser ? firstLine(str(firstUser.p.message)) : undefined,
+    ...(originator && originator !== "codex-tui" ? { programmatic: true, origin: originator } : {}),
+  };
 }
 
 function parseArgs(s: unknown): Record<string, unknown> | null {
   if (typeof s !== "string") return null;
   try {
-    const v = JSON.parse(s);
-    return v && typeof v === "object" ? (v as Record<string, unknown>) : { value: v };
+    const v: unknown = JSON.parse(s);
+    return isRecord(v) ? v : { value: v };
   } catch {
     return { raw: s };
   }
@@ -189,16 +217,10 @@ function normalizeToolInput(args: Record<string, unknown>): Record<string, unkno
 
 function outputText(out: unknown): string {
   if (typeof out === "string") return out;
-  const o = asRecord(out);
+  const o = obj(out);
   if (typeof o.content === "string") return o.content;
   if (typeof o.output === "string") return o.output;
   return out == null ? "" : JSON.stringify(out);
-}
-
-function pushTool(events: Event[], ts: string | undefined, tool: string, input: unknown): Event {
-  const ev: Event = { kind: "tool_use", ts, role: "assistant", tool, input };
-  events.push(ev);
-  return ev;
 }
 
 async function readSession(path: string): Promise<Session> {
