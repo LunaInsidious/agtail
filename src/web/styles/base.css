@@ -1,0 +1,181 @@
+:root {
+  --bg: #0b0e14;
+  --panel: #11151f;
+  --panel2: #161b27;
+  --border: #222a3c;
+  --text: #d6dcea;
+  --muted: #717c93;
+  --faint: #475066;
+  --user: #5fb3d4;
+  --tool: #e0a458;
+  --ok: #6aa884;
+  --err: #d96c6c;
+  --think: #8a7fb0;
+  --claude: #d08770;
+  --codex: #88c0a3;
+  --rad: 7px;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+}
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+}
+.brand {
+  font-family: var(--mono);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.brand b {
+  color: var(--tool);
+}
+.search {
+  display: flex;
+  gap: 6px;
+  flex: 1 1 260px;
+  min-width: 220px;
+}
+header input,
+header button,
+header select {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--rad);
+  padding: 5px 9px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+header select {
+  max-width: 200px;
+  cursor: pointer;
+}
+.searchbox {
+  position: relative;
+  flex: 2;
+  min-width: 140px;
+  display: flex;
+}
+.searchbox input[type="search"] {
+  width: 100%;
+}
+.recent {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--rad);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  max-height: 60vh;
+  overflow: hidden;
+}
+.recentlist {
+  overflow-y: auto;
+} /* items scroll; Clear history stays pinned below */
+.recentitem {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 7px 11px;
+  cursor: pointer;
+}
+.recentitem:hover,
+.recentitem.active {
+  background: var(--panel2);
+}
+.recentitem.active {
+  box-shadow: inset 2px 0 0 var(--tool);
+}
+.recentitem .ric {
+  color: var(--muted);
+  font-size: 11px;
+  flex: 0 0 auto;
+}
+.recentitem .rtext {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.recentclear {
+  flex: 0 0 auto;
+  background: var(--panel);
+  border: none;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+  padding: 7px;
+  cursor: pointer;
+  font-family: var(--mono);
+}
+.recentclear:hover {
+  color: var(--err);
+}
+.search .tool,
+.search .cwd {
+  flex: 1;
+  min-width: 90px;
+}
+.search input[type="date"] {
+  color: var(--muted);
+}
+.search button {
+  cursor: pointer;
+  color: var(--tool);
+}
+.agents {
+  display: flex;
+  gap: 6px;
+}
+.agents label,
+.mask {
+  color: var(--muted);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.agents label.on {
+  color: var(--text);
+}

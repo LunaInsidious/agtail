@@ -1,0 +1,416 @@
+/* Filter popover: the controls live here; applied values show as chips below. */
+.filtermenu {
+  position: relative;
+  flex: 0 0 auto;
+}
+.filtermenu:first-of-type {
+  margin-left: auto;
+}
+.savedpop {
+  width: 240px;
+  gap: 3px;
+}
+.savedempty {
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+  padding: 2px 2px 4px;
+}
+.screenempty {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+  max-width: 560px;
+}
+.screenempty p {
+  margin: 0 0 10px;
+}
+.screenempty b {
+  color: var(--text);
+}
+.savedapply {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 5px 7px;
+  cursor: pointer;
+  border-radius: var(--rad);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.savedapply:hover {
+  background: var(--panel2);
+  color: var(--tool);
+}
+.savedapply.on {
+  color: var(--tool);
+}
+.savecurwrap {
+  position: relative;
+  display: block;
+  margin-top: 4px;
+}
+.savecurwrap .tip {
+  position: absolute;
+  bottom: calc(100% + 9px);
+  left: 50%;
+  transform: translateX(-50%) translateY(3px);
+  width: max-content;
+  max-width: 220px;
+  z-index: 40;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 11px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.12s,
+    transform 0.12s;
+}
+/* downward caret */
+.savecurwrap .tip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--panel);
+}
+.savecurwrap:hover .tip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.savecur {
+  width: 100%;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  color: var(--tool);
+  border-radius: var(--rad);
+  padding: 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+.savecur:disabled {
+  color: var(--faint);
+  cursor: default;
+}
+.savecur:hover:not(:disabled) {
+  border-color: var(--tool);
+}
+.naming {
+  margin-top: 4px;
+  display: flex;
+  gap: 5px;
+}
+.nameinput {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel2);
+  border: 1px solid var(--tool);
+  color: var(--text);
+  border-radius: var(--rad);
+  padding: 6px 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.namesave {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  color: var(--tool);
+  border-radius: var(--rad);
+  padding: 6px 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+.namesave:hover {
+  border-color: var(--tool);
+}
+.savemanage {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 4px 6px;
+  cursor: pointer;
+  text-align: left;
+}
+.savemanage:hover {
+  color: var(--tool);
+}
+
+/* Manage-saved-searches screen (full overlay). */
+.screen {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+.screenhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.screenbody {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 900px;
+}
+.mrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--rad);
+  background: var(--panel);
+}
+.mname {
+  flex: 0 0 200px;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--rad);
+  padding: 5px 8px;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.mchips {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+.fchip.nox {
+  padding: 2px 9px;
+}
+.mdim {
+  color: var(--faint);
+  font-size: 12px;
+}
+.mactions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mactions button {
+  font-family: var(--mono);
+  font-size: 12px;
+  border-radius: var(--rad);
+  cursor: pointer;
+  padding: 4px 10px;
+}
+.mapply {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  color: var(--tool);
+}
+.mapply:hover {
+  border-color: var(--tool);
+}
+.mtrash {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 13px;
+}
+.mtrash:hover {
+  color: var(--err);
+}
+.mdel {
+  background: rgba(217, 108, 108, 0.15);
+  border: 1px solid var(--err);
+  color: var(--err);
+}
+.mcancel {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.addfilter {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: var(--rad);
+  padding: 5px 11px;
+  font-family: var(--mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+.addfilter:hover {
+  color: var(--text);
+}
+.addfilter.has {
+  color: var(--tool);
+  border-color: var(--tool);
+}
+.filterpop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  width: 300px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--rad);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+}
+.filterpop .disc {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.filterpop .disc .lbl {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.filterpop .disc:hover .lbl {
+  color: var(--text);
+}
+.filterpop .disc .chev {
+  color: var(--muted);
+  font-size: 10px;
+}
+.filterpop .frow {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.filterpop .frow > .lbl {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.filterpop select,
+.filterpop input[type="date"] {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--rad);
+  padding: 5px 9px;
+  font-family: var(--mono);
+  font-size: 12px;
+  width: 100%;
+}
+.checklist {
+  display: flex;
+  flex-direction: column;
+  max-height: 168px;
+  overflow-y: auto;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: var(--rad);
+  padding: 4px 8px;
+}
+.checklist label {
+  color: var(--muted);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 2px 0;
+}
+.checklist label.on {
+  color: var(--text);
+}
+.filterpop .dates {
+  display: flex;
+  gap: 6px;
+}
+.filterpop .dates input {
+  flex: 1;
+}
+.filterpop .clear {
+  align-self: flex-end;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: var(--rad);
+  padding: 3px 11px;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: var(--mono);
+}
+.filterpop .clear:hover {
+  color: var(--err);
+  border-color: var(--err);
+}
+
+/* Applied-filter chips: always visible on their own line so the active scope is
+   never hidden behind interaction. */
+.chips {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+.fchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2px 3px 2px 9px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+}
+.fchip .x {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 8px;
+}
+.fchip .x:hover {
+  color: var(--err);
+  background: rgba(217, 108, 108, 0.15);
+}

@@ -1,0 +1,392 @@
+/* Flex column: fixed header above a virtualized (own-scroll) event list. */
+.timeline {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.empty {
+  color: var(--muted);
+  padding: 40px;
+  text-align: center;
+  font-family: var(--mono);
+  line-height: 1.9;
+}
+.thead {
+  flex: 0 0 auto;
+  z-index: 5;
+  background: var(--panel);
+}
+.meta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 8px 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+.meta code {
+  color: var(--tool);
+}
+.meta .cost {
+  color: var(--ok);
+  margin-left: auto;
+}
+.controls {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.controls label {
+  color: var(--muted);
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.controls label.on {
+  color: var(--text);
+}
+.controls label em {
+  color: var(--faint);
+  font-style: normal;
+}
+/* Hook group: a violet-tinted zone so "these are the hook filters" reads at a
+   glance, distinct from the amber tool chips next to it. */
+.hookgroup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  background: rgba(138, 127, 176, 0.12);
+  border: 1px solid rgba(138, 127, 176, 0.4);
+  border-radius: 13px;
+}
+.hookgroup .hooklabel {
+  color: var(--think);
+  font-weight: 600;
+}
+.hookgroup .hooklabel.on {
+  color: var(--think);
+}
+.hookgroup .hooksep {
+  width: 1px;
+  align-self: stretch;
+  background: rgba(138, 127, 176, 0.4);
+  margin: 1px 1px;
+}
+/* Hook type chips: violet accent (vs amber tools) to reinforce the grouping. */
+.hookgroup .chip {
+  border-color: rgba(138, 127, 176, 0.4);
+}
+.hookgroup .chip.on {
+  color: var(--think);
+  border-color: var(--think);
+  background: rgba(138, 127, 176, 0.15);
+}
+.chip {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 12px;
+  padding: 2px 9px;
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: pointer;
+}
+.chip.on {
+  color: var(--tool);
+  border-color: var(--tool);
+}
+.chip em {
+  color: var(--faint);
+  font-style: normal;
+}
+/* Tools disclosure: a single chip opening a scrollable cloud of tool filters, so
+   the controls row stays short even with 20+ tools (incl. mcp__*). */
+.toolmenu {
+  position: relative;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+.toolmenu .caret {
+  color: var(--faint);
+}
+.toolpop {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-content: flex-start;
+  max-width: 460px;
+  max-height: 280px;
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--rad);
+  padding: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+.insearch {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--rad);
+  padding: 3px 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  flex: 0 0 auto;
+  width: 260px;
+}
+.controls .count {
+  color: var(--tool);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.findnav {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.findnav button {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--rad);
+  padding: 1px 7px;
+  font-family: var(--mono);
+  font-size: 12px;
+  cursor: pointer;
+  line-height: 1.4;
+}
+.findnav button:hover:not(:disabled) {
+  border-color: var(--tool);
+  color: var(--tool);
+}
+.findnav button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+/* Active match: a left rail + faint wash so the current hit stands out while
+   the surrounding context stays visible. */
+.evrow.active {
+  box-shadow: inset 3px 0 0 var(--tool);
+  background: rgba(224, 164, 88, 0.06);
+}
+mark {
+  background: var(--tool);
+  color: #1a1205;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.events {
+  padding: 6px 0 60px;
+}
+.ev {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 0 8px;
+  padding: 4px 16px;
+  align-items: start;
+}
+.ev .sig {
+  font-family: var(--mono);
+  font-weight: 700;
+  text-align: center;
+}
+.ev.tool .sig {
+  color: var(--tool);
+}
+.ev.user .sig {
+  color: var(--user);
+}
+.ev.assistant .sig {
+  color: var(--muted);
+}
+.ev.think .sig {
+  color: var(--think);
+}
+.ev.unknown .sig,
+.ev.summary .sig,
+.ev.system .sig {
+  color: var(--faint);
+}
+.ev.hook .sig {
+  color: var(--tool);
+}
+.ev.hook .role {
+  color: var(--tool);
+}
+.body {
+  min-width: 0;
+}
+.role {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-right: 6px;
+}
+/* Pinned to the top-right of every turn so cost is always in the same place. */
+.usage {
+  float: right;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ok);
+  background: rgba(106, 168, 132, 0.1);
+  border-radius: 4px;
+  padding: 0 5px;
+  margin-left: 8px;
+  white-space: nowrap;
+}
+.prose {
+  line-height: 1.55;
+  word-break: break-word;
+}
+.prose .raw {
+  white-space: pre-wrap;
+}
+/* Collapsed markdown: clamp by height with a fade, instead of slicing source. */
+.md.clamp {
+  max-height: 11em;
+  overflow: hidden;
+  position: relative;
+}
+.md.clamp::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3.5em;
+  background: linear-gradient(transparent, var(--bg));
+}
+.ev.think .prose {
+  color: var(--think);
+  font-style: italic;
+}
+.prose p:first-child {
+  margin-top: 0;
+}
+.prose p:last-child {
+  margin-bottom: 0;
+}
+.prose pre {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--rad);
+  padding: 8px 10px;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.prose code {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.more {
+  margin-top: 3px;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  color: var(--user);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: var(--mono);
+  padding: 1px 8px;
+  border-radius: 10px;
+}
+.more:hover {
+  border-color: var(--user);
+}
+
+.toolhead {
+  font-family: var(--mono);
+  cursor: pointer;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin: -2px -8px;
+  padding: 2px 8px;
+  border-radius: var(--rad);
+}
+.toolhead:hover {
+  background: var(--panel2);
+}
+.toolhead.open {
+  background: var(--panel2);
+}
+.toolhead .caret {
+  color: var(--muted);
+  width: 10px;
+  flex: 0 0 auto;
+  align-self: center;
+}
+.toolhead:hover .caret {
+  color: var(--tool);
+}
+.toolhead .name {
+  color: var(--tool);
+  font-weight: 600;
+}
+.toolhead .sum {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rc.ok {
+  color: var(--ok);
+}
+.rc.err {
+  color: var(--err);
+}
+.detail {
+  margin: 5px 0 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--rad);
+  background: var(--panel);
+}
+.detail .seg {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.detail .seg:last-child {
+  border-bottom: 0;
+}
+.detail .lbl {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 5px;
+}
+.detail pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  max-height: 420px;
+  overflow: auto;
+}
+.detail pre.err {
+  color: var(--err);
+}

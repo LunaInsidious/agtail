@@ -1,0 +1,10 @@
+/* Stylesheet entry. Imported once from main.tsx; the modules below are loaded
+   in cascade order (later files may override earlier ones), so keep this order:
+     base     — design tokens (:root), reset, app shell, header, search box
+     filters  — filter popover, applied chips, saved-search dropdown + manage screen
+     sidebar  — session/hit lists, rows, archived/programmatic markers, nesting
+     timeline — in-session event timeline, hook/tool controls, markdown, usage */
+@import "./base.css";
+@import "./filters.css";
+@import "./sidebar.css";
+@import "./timeline.css";
