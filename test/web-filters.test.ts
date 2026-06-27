@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import type { Filters } from "../src/web/api.js";
-import { defaultSavedName, filterChips, savedChips, uniqueName } from "../src/web/filters.js";
+import type { Filters } from "../src/web/lib/api.js";
+import { defaultSavedName, filterChips, savedChips, uniqueName } from "../src/web/lib/filters.js";
 
 const base: Filters = {
   q: "",
