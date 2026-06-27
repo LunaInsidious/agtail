@@ -14,6 +14,7 @@ import {
   type SessionHit,
   type SessionMeta,
 } from "./api.js";
+import { defaultSavedName, filterChips, homeShort, savedChips, tag, uniqueName } from "./filters.js";
 
 // Search context carried from a hit into the opened session's in-view search.
 type Seed = { find: string; tool?: string };
@@ -35,7 +36,6 @@ function originLabel(origin?: string): string {
 const PROGRAMMATIC_TIP =
   "Programmatic session — launched by tooling (the Agent SDK, a hook, plugin, script, or the desktop app), not typed interactively by a person.";
 
-const homeShort = (p: string) => p.replace(/^\/Users\/[^/]+/, "~").replace(/^\/home\/[^/]+/, "~");
 
 // Recent text searches: a most-recently-used list persisted in localStorage and
 // offered as suggestions on the search box. Recorded on blur/Enter (not per
@@ -85,7 +85,6 @@ const LIMIT_OPTIONS: { value: number; label: string }[] = [
 ];
 
 const AGENTS: Agent[] = ["claude-code", "codex"];
-const tag = (a: Agent) => (a === "claude-code" ? "claude" : a);
 const fmtTs = (ts?: string) => {
   if (!ts) return "";
   const d = new Date(ts);
@@ -94,51 +93,6 @@ const fmtTs = (ts?: string) => {
     : d.toLocaleString([], { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 };
 const pretty = (v: unknown) => (typeof v === "string" ? v : JSON.stringify(v, null, 2));
-
-// Filter conditions as display chips (everything except q, which lives in the
-// search box). Shared by the applied-filter bar and the saved-search displays.
-function filterChips(f: Filters): { key: string; label: string }[] {
-  const out: { key: string; label: string }[] = [];
-  for (const a of f.agents) out.push({ key: "agent:" + a, label: tag(a) });
-  for (const t of f.tools) out.push({ key: "tool:" + t, label: "⚙ " + t });
-  for (const m of f.models) out.push({ key: "model:" + m, label: "✦ " + m });
-  for (const c of f.cwds) out.push({ key: "cwd:" + c, label: "📁 " + homeShort(c) });
-  if (f.since) out.push({ key: "since", label: "≥ " + f.since });
-  if (f.until) out.push({ key: "until", label: "≤ " + f.until });
-  if (f.archived !== "all") out.push({ key: "status", label: f.archived === "only" ? "🗄 archived" : "active only" });
-  if (f.programmatic !== "all")
-    out.push({ key: "origin", label: f.programmatic === "only" ? "🤖 programmatic" : "interactive only" });
-  if (f.mask) out.push({ key: "mask", label: "🔒 mask" });
-  return out;
-}
-
-// Full condition chips incl. the query, for showing what a saved search holds.
-function savedChips(f: Filters): { key: string; label: string }[] {
-  const out = filterChips(f);
-  if (f.q.trim()) out.unshift({ key: "q", label: `🔎 "${f.q.trim()}"` });
-  return out;
-}
-
-// A short default name for a saved search (renamed later if wanted). Shows the
-// first couple of conditions so different searches don't all collapse to the
-// same name (e.g. "claude · ✦ opus +3" rather than "claude +4").
-function defaultSavedName(f: Filters): string {
-  const chips = savedChips(f);
-  if (!chips.length) return "Saved search";
-  const head = chips.slice(0, 2).map((c) => c.label).join(" · ");
-  const rest = chips.length - 2;
-  return rest > 0 ? `${head} +${rest}` : head;
-}
-
-// Avoid duplicate saved-search names by appending " (2)", " (3)", …
-function uniqueName(base: string, taken: string[]): string {
-  const set = new Set(taken);
-  if (!set.has(base)) return base;
-  for (let n = 2; ; n++) {
-    const candidate = `${base} (${n})`;
-    if (!set.has(candidate)) return candidate;
-  }
-}
 
 // Collapsible checkbox list for an array filter (tools / models / projects):
 // click to toggle; selections also show as removable chips in the bar. The
