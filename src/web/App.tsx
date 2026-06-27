@@ -42,10 +42,30 @@ const homeShort = (p: string) => p.replace(/^\/Users\/[^/]+/, "~").replace(/^\/h
 // keystroke), so typing "hoge" never leaves "ho"/"hog" behind; distinct queries
 // (incl. "ho" and "hoge") are kept as separate entries.
 const RECENT_KEY = "agtail.recent";
-const RECENT_CAP = 25;
+// Keep a large bounded history (like a shell history file — zsh's SAVEHIST
+// defaults to 10000), but only ever SHOW a short list of suggestions and reach
+// older ones by typing a fragment (as the browser address bar / Ctrl-R do).
+// Autocomplete UX guidance: show ≤10 on desktop, more becomes noise.
+//   https://baymard.com/blog/autocomplete-design
+//   https://www.algolia.com/blog/ux/auto-suggest-best-practices-for-autocomplete-suggestion
+//   https://www.w3tutorials.net/blog/bash-or-zsh-histsize-vs-histfilesize/  (HISTSIZE/SAVEHIST)
+const RECENT_CAP = 10000; // distinct queries retained in localStorage
+const RECENT_SHOWN = 10; // suggestions rendered in the dropdown at once
 function loadRecent(): string[] {
   const raw = localStorage.getItem(RECENT_KEY);
   return raw ? (JSON.parse(raw) as string[]) : [];
+}
+
+// Saved searches: a named, durable snapshot of the full filter set + limit, for
+// recurring/audit queries. Recalled from the header "★ Saved" menu.
+const SAVED_KEY = "agtail.saved";
+type SavedSearch = { id: string; name: string; filters: Filters; limit: number };
+function loadSaved(): SavedSearch[] {
+  const raw = localStorage.getItem(SAVED_KEY);
+  if (!raw) return [];
+  const arr = JSON.parse(raw) as Partial<SavedSearch>[];
+  // Backfill ids for entries saved before they had one.
+  return arr.map((s) => ({ id: s.id ?? crypto.randomUUID(), name: s.name ?? "Saved search", filters: s.filters!, limit: s.limit ?? DEFAULT_LIMIT }));
 }
 
 // Cheap signature to detect that a cached session changed (a live one grew):
@@ -74,6 +94,51 @@ const fmtTs = (ts?: string) => {
     : d.toLocaleString([], { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 };
 const pretty = (v: unknown) => (typeof v === "string" ? v : JSON.stringify(v, null, 2));
+
+// Filter conditions as display chips (everything except q, which lives in the
+// search box). Shared by the applied-filter bar and the saved-search displays.
+function filterChips(f: Filters): { key: string; label: string }[] {
+  const out: { key: string; label: string }[] = [];
+  for (const a of f.agents) out.push({ key: "agent:" + a, label: tag(a) });
+  for (const t of f.tools) out.push({ key: "tool:" + t, label: "⚙ " + t });
+  for (const m of f.models) out.push({ key: "model:" + m, label: "✦ " + m });
+  for (const c of f.cwds) out.push({ key: "cwd:" + c, label: "📁 " + homeShort(c) });
+  if (f.since) out.push({ key: "since", label: "≥ " + f.since });
+  if (f.until) out.push({ key: "until", label: "≤ " + f.until });
+  if (f.archived !== "all") out.push({ key: "status", label: f.archived === "only" ? "🗄 archived" : "active only" });
+  if (f.programmatic !== "all")
+    out.push({ key: "origin", label: f.programmatic === "only" ? "🤖 programmatic" : "interactive only" });
+  if (f.mask) out.push({ key: "mask", label: "🔒 mask" });
+  return out;
+}
+
+// Full condition chips incl. the query, for showing what a saved search holds.
+function savedChips(f: Filters): { key: string; label: string }[] {
+  const out = filterChips(f);
+  if (f.q.trim()) out.unshift({ key: "q", label: `🔎 "${f.q.trim()}"` });
+  return out;
+}
+
+// A short default name for a saved search (renamed later if wanted). Shows the
+// first couple of conditions so different searches don't all collapse to the
+// same name (e.g. "claude · ✦ opus +3" rather than "claude +4").
+function defaultSavedName(f: Filters): string {
+  const chips = savedChips(f);
+  if (!chips.length) return "Saved search";
+  const head = chips.slice(0, 2).map((c) => c.label).join(" · ");
+  const rest = chips.length - 2;
+  return rest > 0 ? `${head} +${rest}` : head;
+}
+
+// Avoid duplicate saved-search names by appending " (2)", " (3)", …
+function uniqueName(base: string, taken: string[]): string {
+  const set = new Set(taken);
+  if (!set.has(base)) return base;
+  for (let n = 2; ; n++) {
+    const candidate = `${base} (${n})`;
+    if (!set.has(candidate)) return candidate;
+  }
+}
 
 // Collapsible checkbox list for an array filter (tools / models / projects):
 // click to toggle; selections also show as removable chips in the bar. The
@@ -112,6 +177,101 @@ function CheckList({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// Manage saved searches: a dedicated screen with each search's full conditions
+// shown as chips, inline rename, apply, and a two-step (confirmed) delete.
+function ManageSaved({
+  saved,
+  onApply,
+  onRename,
+  onDelete,
+  onClose,
+}: {
+  saved: SavedSearch[];
+  onApply: (s: SavedSearch) => void;
+  onRename: (id: string, name: string) => void;
+  onDelete: (id: string) => void;
+  onClose: () => void;
+}) {
+  const [confirming, setConfirming] = useState<string | null>(null);
+  return (
+    <div className="screen">
+      <div className="screenhead">
+        <span className="brand">
+          <b>≋</b> agtail · Saved searches
+        </span>
+        <button type="button" className="addfilter" onClick={onClose}>
+          Done
+        </button>
+      </div>
+      <div className="screenbody">
+        {saved.length === 0 && (
+          <div className="screenempty">
+            <p>No saved searches yet.</p>
+            <p>
+              A saved search is a full filter set (agent, model, project, status, tools, query…) you can recall in one
+              click — useful for recurring audits or checks.
+            </p>
+            <p>
+              To create one: on the main screen apply some filters or a search, then open <b>★ Saved</b> →{" "}
+              <b>“Save current search”</b>.
+            </p>
+          </div>
+        )}
+        {saved.map((s) => {
+          const cond = savedChips(s.filters);
+          return (
+            <div className="mrow" key={s.id}>
+              <input
+                className="mname"
+                value={s.name}
+                onChange={(e) => onRename(s.id, e.target.value)}
+                aria-label="search name"
+              />
+              <div className="mchips">
+                {cond.length === 0 ? (
+                  <span className="mdim">no conditions</span>
+                ) : (
+                  cond.map((c) => (
+                    <span className="fchip nox" key={c.key}>
+                      {c.label}
+                    </span>
+                  ))
+                )}
+              </div>
+              <div className="mactions">
+                <button type="button" className="mapply" onClick={() => onApply(s)}>
+                  Apply
+                </button>
+                {confirming === s.id ? (
+                  <>
+                    <button
+                      type="button"
+                      className="mdel"
+                      onClick={() => {
+                        onDelete(s.id);
+                        setConfirming(null);
+                      }}
+                    >
+                      Delete
+                    </button>
+                    <button type="button" className="mcancel" onClick={() => setConfirming(null)}>
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button type="button" className="mtrash" onClick={() => setConfirming(s.id)} title="delete">
+                    🗑
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -165,12 +325,17 @@ export function App() {
   // re-opening one — notably via back/forward — is instant with no refetch.
   const sessionCache = useRef(new Map<string, Session>());
   const [showFilters, setShowFilters] = useState(false);
+  const [showSaved, setShowSaved] = useState(false);
+  // The "Saved searches" manage screen lives at the /saved URL (so Back closes it).
+  const [manageSaved, setManageSaved] = useState(() => window.location.pathname === "/saved");
+  const savedRef = useRef<HTMLDivElement>(null);
   const [limit, setLimit] = useState<number>(() => readHistory().limit);
   const set = (p: Partial<Filters>) => setFilters((f) => ({ ...f, ...p }));
 
   // Recent search suggestions (text only). Recorded on blur/Enter.
   const [recent, setRecent] = useState<string[]>(loadRecent);
   const [recentOpen, setRecentOpen] = useState(false);
+  const [activeIdx, setActiveIdx] = useState(-1); // keyboard-highlighted suggestion (-1 = none)
   const pushRecent = (q: string) => {
     const v = q.trim();
     if (!v) return;
@@ -190,6 +355,60 @@ export function App() {
     pushRecent(v);
     setRecentOpen(false);
   };
+
+  // Saved searches (named full-filter snapshots). showSaved/savedRef/manageSaved
+  // are declared earlier (used by the outside-click effect / view switch).
+  const [saved, setSaved] = useState<SavedSearch[]>(loadSaved);
+  const persistSaved = (next: SavedSearch[]) => {
+    localStorage.setItem(SAVED_KEY, JSON.stringify(next));
+    setSaved(next);
+  };
+  // Save flow: an inline name field opens pre-filled with an auto-name (focused
+  // and selected), so Enter accepts as-is or typing replaces it — no ugly prompt.
+  const [namingDraft, setNamingDraft] = useState<string | null>(null);
+  const startNaming = () => setNamingDraft(uniqueName(defaultSavedName(filters), saved.map((s) => s.name)));
+  const commitSave = () => {
+    if (!anyFilter || activeSaved) return; // nothing to save / these conditions already saved
+    const base = (namingDraft ?? "").trim() || defaultSavedName(filters);
+    const name = uniqueName(base, saved.map((s) => s.name)); // never collide with an existing name
+    persistSaved([{ id: crypto.randomUUID(), name, filters, limit }, ...saved]);
+    setNamingDraft(null);
+    setShowSaved(false);
+  };
+  const applySaved = (s: SavedSearch) => {
+    leaveManageUrl(); // if applying from the manage screen, turn its /saved entry into "/"
+    setFilters({ ...emptyFilters, ...s.filters }); // merge so older snapshots get new defaults
+    setLimit(s.limit);
+    setShowSaved(false);
+    setManageSaved(false);
+  };
+  const renameSaved = (id: string, name: string) => persistSaved(saved.map((s) => (s.id === id ? { ...s, name } : s)));
+  const deleteSaved = (id: string) => persistSaved(saved.filter((s) => s.id !== id));
+  // The manage screen is its own URL (/saved) so Back/forward, reload, and the
+  // Done button all work. Only the path is exposed — no query content. (The
+  // server falls back to index.html for unknown paths, so /saved reloads.)
+  const openManage = () => {
+    setShowSaved(false);
+    setManageSaved(true);
+    window.history.pushState(window.history.state, "", "/saved");
+  };
+  // Leave /saved by replacing it with "/" (robust even if /saved was opened
+  // directly); browser Back is handled separately by the popstate listener.
+  const leaveManageUrl = () => {
+    if (window.location.pathname === "/saved") window.history.replaceState(window.history.state, "", "/");
+  };
+  const closeManage = () => {
+    setManageSaved(false);
+    leaveManageUrl();
+  };
+  // The saved search the current filters/limit exactly match (if any) — drives
+  // the "★ <name>" highlight instead of lighting up whenever any saved exists.
+  const curKey = JSON.stringify({ filters, limit });
+  const activeSaved = saved.find((s) => JSON.stringify({ filters: { ...emptyFilters, ...s.filters }, limit: s.limit }) === curKey);
+  // Drop any half-typed name when the Saved dropdown closes.
+  useEffect(() => {
+    if (!showSaved) setNamingDraft(null);
+  }, [showSaved]);
 
   // History (back/forward + reload) carries filters, limit AND the open session.
   // The effects live after `open` is defined (below). histRef holds the snapshot
@@ -221,40 +440,30 @@ export function App() {
   // clicking the toggle itself doesn't immediately re-close it.
   const popRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!showFilters) return;
+    if (!showFilters && !showSaved) return;
     const onDown = (e: MouseEvent) => {
-      if (popRef.current && !popRef.current.contains(e.target as Node)) setShowFilters(false);
+      const t = e.target as Node;
+      if (popRef.current && !popRef.current.contains(t)) setShowFilters(false);
+      if (savedRef.current && !savedRef.current.contains(t)) setShowSaved(false);
     };
     window.addEventListener("mousedown", onDown);
     return () => window.removeEventListener("mousedown", onDown);
-  }, [showFilters]);
+  }, [showFilters, showSaved]);
 
   // Applied filters render as always-visible removable chips; the controls to
   // add/edit them live in the popover. Unused dimensions take no bar space.
-  const chips: { key: string; label: string; onRemove: () => void }[] = [];
-  for (const a of filters.agents)
-    chips.push({ key: "agent:" + a, label: tag(a), onRemove: () => set({ agents: filters.agents.filter((x) => x !== a) }) });
-  for (const t of filters.tools)
-    chips.push({ key: "tool:" + t, label: "⚙ " + t, onRemove: () => set({ tools: filters.tools.filter((x) => x !== t) }) });
-  for (const m of filters.models)
-    chips.push({ key: "model:" + m, label: "✦ " + m, onRemove: () => set({ models: filters.models.filter((x) => x !== m) }) });
-  for (const c of filters.cwds)
-    chips.push({ key: "cwd:" + c, label: "📁 " + homeShort(c), onRemove: () => set({ cwds: filters.cwds.filter((x) => x !== c) }) });
-  if (filters.since) chips.push({ key: "since", label: "≥ " + filters.since, onRemove: () => set({ since: "" }) });
-  if (filters.until) chips.push({ key: "until", label: "≤ " + filters.until, onRemove: () => set({ until: "" }) });
-  if (filters.archived !== "all")
-    chips.push({
-      key: "status",
-      label: filters.archived === "only" ? "🗄 archived" : "active only",
-      onRemove: () => set({ archived: "all" }),
-    });
-  if (filters.programmatic !== "all")
-    chips.push({
-      key: "origin",
-      label: filters.programmatic === "only" ? "🤖 programmatic" : "interactive only",
-      onRemove: () => set({ programmatic: "all" }),
-    });
-  if (filters.mask) chips.push({ key: "mask", label: "🔒 mask", onRemove: () => set({ mask: false }) });
+  const removeChip = (key: string) => {
+    if (key.startsWith("agent:")) set({ agents: filters.agents.filter((x) => x !== key.slice(6)) });
+    else if (key.startsWith("tool:")) set({ tools: filters.tools.filter((x) => x !== key.slice(5)) });
+    else if (key.startsWith("model:")) set({ models: filters.models.filter((x) => x !== key.slice(6)) });
+    else if (key.startsWith("cwd:")) set({ cwds: filters.cwds.filter((x) => x !== key.slice(4)) });
+    else if (key === "since") set({ since: "" });
+    else if (key === "until") set({ until: "" });
+    else if (key === "status") set({ archived: "all" });
+    else if (key === "origin") set({ programmatic: "all" });
+    else if (key === "mask") set({ mask: false });
+  };
+  const chips = filterChips(filters);
 
   const clearAll = () =>
     set({ agents: [], tools: [], models: [], cwds: [], since: "", until: "", archived: "all", programmatic: "all", mask: false });
@@ -399,7 +608,8 @@ export function App() {
     const s = JSON.stringify(snap);
     if (s === histRef.current) return; // already the current entry
     histRef.current = s;
-    window.history.pushState({ ...window.history.state, agtail: snap }, "");
+    // Filter/open snapshot lives at the root path (never the /saved manage URL).
+    window.history.pushState({ agtail: snap }, "", "/");
   };
   // Signatures that should create an entry the instant they change (discrete
   // navigation), vs the query text which is debounced while typing.
@@ -447,6 +657,7 @@ export function App() {
       setLimit(snap.limit);
       if (snap.open) void openRef.current(snap.open.agent, snap.open.id);
       else setCur(null);
+      setManageSaved(window.location.pathname === "/saved"); // open/close manage to match the URL
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -504,7 +715,33 @@ export function App() {
 
   // Recent searches matching the current text (substring), newest first.
   const needleLc = filters.q.trim().toLowerCase();
-  const recentMatches = recent.filter((r) => r !== filters.q && r.toLowerCase().includes(needleLc));
+  // Show matches incl. an exact match of the current text (so typing "hoge"
+  // still surfaces the saved "hoge"); newest first, capped to the shown count.
+  const recentMatches = recent.filter((r) => r.toLowerCase().includes(needleLc)).slice(0, RECENT_SHOWN);
+  // ↓/Tab next, ↑/Shift+Tab prev, Enter accept the highlighted one, Esc close.
+  const onSearchKey = (e: React.KeyboardEvent) => {
+    const open = recentOpen && recentMatches.length > 0;
+    if (e.key === "Escape") {
+      if (recentOpen) {
+        e.preventDefault(); // close the suggestions WITHOUT type=search's native clear
+        setRecentOpen(false);
+        setActiveIdx(-1);
+      }
+      return;
+    }
+    if (!open) return;
+    const last = recentMatches.length - 1;
+    if (e.key === "ArrowDown" || (e.key === "Tab" && !e.shiftKey)) {
+      e.preventDefault();
+      setActiveIdx((i) => Math.min(i + 1, last));
+    } else if (e.key === "ArrowUp" || (e.key === "Tab" && e.shiftKey)) {
+      e.preventDefault();
+      setActiveIdx((i) => Math.max(i - 1, -1));
+    } else if (e.key === "Enter" && activeIdx >= 0) {
+      e.preventDefault(); // pick the highlight instead of submitting the form
+      selectRecent(recentMatches[activeIdx]!);
+    }
+  };
 
   return (
     <div className="app">
@@ -521,31 +758,40 @@ export function App() {
               onChange={(e) => {
                 set({ q: e.target.value });
                 setRecentOpen(true);
+                setActiveIdx(-1);
               }}
-              onFocus={() => setRecentOpen(true)}
+              onFocus={() => {
+                setRecentOpen(true);
+                setActiveIdx(-1);
+              }}
+              onKeyDown={onSearchKey}
               onBlur={() => {
                 pushRecent(filters.q);
                 setRecentOpen(false);
+                setActiveIdx(-1);
               }}
             />
             {recentOpen && recentMatches.length > 0 && (
               <div className="recent">
-                {recentMatches.map((r) => (
-                  // mousedown (not click) + preventDefault so the input doesn't
-                  // blur-and-close before the selection registers.
-                  <button
-                    type="button"
-                    key={r}
-                    className="recentitem"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      selectRecent(r);
-                    }}
-                  >
-                    <span className="ric">🕘</span>
-                    {r}
-                  </button>
-                ))}
+                <div className="recentlist">
+                  {recentMatches.map((r, i) => (
+                    // mousedown (not click) + preventDefault so the input doesn't
+                    // blur-and-close before the selection registers.
+                    <button
+                      type="button"
+                      key={r}
+                      className={"recentitem" + (i === activeIdx ? " active" : "")}
+                      onMouseEnter={() => setActiveIdx(i)}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        selectRecent(r);
+                      }}
+                    >
+                      <span className="ric">🕘</span>
+                      <span className="rtext">{r}</span>
+                    </button>
+                  ))}
+                </div>
                 <button
                   type="button"
                   className="recentclear"
@@ -561,6 +807,80 @@ export function App() {
           </div>
           <button type="submit">Search</button>
         </form>
+        <div className="filtermenu" ref={savedRef}>
+          {/* Highlight only when the active filters match a saved search. */}
+          <button
+            type="button"
+            className={"addfilter" + (activeSaved ? " has" : "")}
+            onClick={() => setShowSaved((v) => !v)}
+            title={activeSaved ? `Viewing saved search: ${activeSaved.name}` : "Saved searches"}
+          >
+            ★ {activeSaved ? activeSaved.name : `Saved${saved.length ? ` (${saved.length})` : ""}`}
+          </button>
+          {showSaved && (
+            <div className="filterpop savedpop">
+              {saved.length === 0 && (
+                <div className="savedempty">
+                  No saved searches yet. Save a set of filters/search to recall it in one click — handy for recurring
+                  checks &amp; audits.
+                </div>
+              )}
+              {saved.map((s) => (
+                <button
+                  type="button"
+                  className={"savedapply" + (s.id === activeSaved?.id ? " on" : "")}
+                  key={s.id}
+                  onClick={() => applySaved(s)}
+                  title="apply this search"
+                >
+                  ★ {s.name}
+                </button>
+              ))}
+              {namingDraft === null ? (
+                // Custom tooltip on the wrapper (the disabled button can't hover);
+                // instant, unlike the native `title` which has a fixed ~1-2s delay.
+                <span className="savecurwrap">
+                  <button
+                    type="button"
+                    className="savecur"
+                    disabled={!anyFilter || !!activeSaved}
+                    onClick={startNaming}
+                  >
+                    ＋ Save current search
+                  </button>
+                  {(!anyFilter || activeSaved) && (
+                    <span className="tip">
+                      {activeSaved
+                        ? `✓ These conditions are already saved as “${activeSaved.name}”.`
+                        : "💡 Apply a filter or search first — then you can save it here."}
+                    </span>
+                  )}
+                </span>
+              ) : (
+                <div className="naming">
+                  <input
+                    className="nameinput"
+                    autoFocus
+                    value={namingDraft}
+                    onFocus={(e) => e.currentTarget.select()}
+                    onChange={(e) => setNamingDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") commitSave();
+                      else if (e.key === "Escape") setNamingDraft(null);
+                    }}
+                    aria-label="save search as"
+                  />
+                  <button type="button" className="namesave" onClick={commitSave}>
+                    Save
+                  </button>
+                </div>
+              )}
+              <button type="button" className="savemanage" onClick={openManage}>
+                Manage saved searches →
+              </button>
+            </div>
+          )}
+        </div>
         <div className="filtermenu" ref={popRef}>
           <button
             type="button"
@@ -676,7 +996,7 @@ export function App() {
             {chips.map((c) => (
               <span className="fchip" key={c.key}>
                 {c.label}
-                <button type="button" className="x" onClick={c.onRemove} title="remove filter">
+                <button type="button" className="x" onClick={() => removeChip(c.key)} title="remove filter">
                   ✕
                 </button>
               </span>
@@ -726,6 +1046,15 @@ export function App() {
           {!loading && cur && <Timeline session={cur} seed={seed} onOpen={open} onOpenParent={openParent} />}
         </section>
       </main>
+      {manageSaved && (
+        <ManageSaved
+          saved={saved}
+          onApply={applySaved}
+          onRename={renameSaved}
+          onDelete={deleteSaved}
+          onClose={closeManage}
+        />
+      )}
     </div>
   );
 }
