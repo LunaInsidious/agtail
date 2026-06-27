@@ -84,7 +84,6 @@ export function createApiHandler(opts: ApiOptions = {}) {
   // Facets are a full scan, so compute once and cache for the process lifetime.
   const getFacets = once(() => computeFacets(ov));
   // LiteLLM price sheet, loaded once.
-  const getPrices = once(() => loadPriceResolver());
 
   // eslint-disable-next-line sonarjs/cognitive-complexity -- HTTP route dispatcher: one branch per endpoint; breadth, not nesting depth.
   return async function api(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
@@ -124,7 +123,8 @@ export function createApiHandler(opts: ApiOptions = {}) {
           return true;
         }
         const out = doMask ? maskSession(sess) : sess;
-        const resolve = await getPrices();
+        // Pass the session's models so a brand-new one triggers a price refresh.
+        const resolve = await loadPriceResolver(out.models ?? (out.model ? [out.model] : []));
         // Attach per-turn tokens/cost to events that carry usage.
         const events = out.events.map((e) =>
           e.usage ? { ...e, tokens: usageSum(e.usage), cost: costForModel(e.usage, e.model, resolve) } : e,

@@ -199,7 +199,7 @@ async function cmdShow(id: string, opts: ShowOpts, global: GlobalOpts) {
     color(`  ${tilde(sess.cwd)}  branch=${sess.gitBranch ?? "-"}  ${sess.model ?? ""}  v${sess.version ?? "?"}`, "dim"),
   );
   console.log();
-  const resolve = await loadPriceResolver();
+  const resolve = await loadPriceResolver(sess.models);
   // Per-turn token/cost badge for events carrying usage.
   const usageBadge = (e: (typeof sess.events)[number]) => {
     if (!e.usage) return "";
@@ -272,7 +272,7 @@ async function cmdStats(id: string | undefined, opts: StatsOpts, global: GlobalO
   }
   console.log(color(`${"total".padEnd(22)} ${String(total).padStart(5)}`, "dim"));
 
-  const u = aggregateUsage(allEvents, await loadPriceResolver());
+  const u = aggregateUsage(allEvents, await loadPriceResolver(allEvents.map((e) => e.model)));
   console.log();
   console.log(color("tokens", "bold"));
   console.log(
