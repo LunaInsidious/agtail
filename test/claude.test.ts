@@ -16,6 +16,12 @@ describe("claude-code adapter", () => {
     expect(sess.title).toBe("please grep for blogsync");
   });
 
+  it("titles a slash-command session by the command name, skipping the local-command caveat", async () => {
+    const p = fileURLToPath(new URL("./fixtures/claude-command.jsonl", import.meta.url));
+    const sess = await claudeCodeAdapter().readSession(p);
+    expect(sess.title).toBe("/stickers");
+  });
+
   it("keeps thinking with content but drops empty (signature-only) blocks", async () => {
     const sess = await claudeCodeAdapter().readSession(fixture);
     const thinking = sess.events.filter((e) => e.kind === "thinking");

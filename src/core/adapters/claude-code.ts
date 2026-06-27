@@ -303,7 +303,12 @@ async function readSession(path: string): Promise<Session> {
       const m = msg as Record<string, unknown>;
       if (title === undefined && m.role === "user") {
         const t = textFromContent(m.content).trim();
-        if (t && !t.startsWith("[") && !t.includes("tool_result")) {
+        // A slash-command invocation (e.g. "/stickers") titles by the command
+        // name, not its boilerplate. Skip the injected local-command caveat.
+        const cmd = t.match(/<command-name>([^<]+)<\/command-name>/);
+        if (cmd) {
+          title = cmd[1]!.trim();
+        } else if (t && !t.startsWith("[") && !t.startsWith("<local-command-caveat>") && !t.includes("tool_result")) {
           title = t.split("\n")[0]!.slice(0, 120);
         }
       }
