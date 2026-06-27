@@ -300,12 +300,16 @@ program
   .option("--programmatic <mode>", "programmatic (SDK-driven) sessions: all (default) | only | none", "all")
   .option("--mask", "redact secrets in output");
 
+// The --agent option is shared by every subcommand.
+const AGENT_OPT = "--agent <agents>";
+const AGENT_DESC = "limit to agents (comma-separated)";
+
 const g = (): GlobalOpts => program.opts();
 
 program
   .command("grep <pattern>")
   .description("search across all sessions (the primary command)")
-  .option("--agent <agents>", "limit to agents (comma-separated: claude-code,codex)")
+  .option(AGENT_OPT, "limit to agents (comma-separated: claude-code,codex)")
   .option("--tool <glob>", "restrict to a tool (repeatable; e.g. Bash, Write, 'mcp__*')", collect, [])
   .option("--cwd <substr>", "restrict to sessions whose cwd contains this")
   .option("--since <date>", "only events at/after this ISO date")
@@ -321,7 +325,7 @@ program
 program
   .command("list")
   .description("list sessions across agents, newest first")
-  .option("--agent <agents>", "limit to agents (comma-separated)")
+  .option(AGENT_OPT, AGENT_DESC)
   .option("--project <substr>", "filter by cwd substring")
   .option("--since <date>")
   .option("--until <date>")
@@ -330,14 +334,14 @@ program
 program
   .command("show <id>")
   .description("print one session's timeline")
-  .option("--agent <agents>", "limit to agents (comma-separated)")
+  .option(AGENT_OPT, AGENT_DESC)
   .option("--tools", "show tool calls only")
   .action((id, opts) => cmdShow(id, opts, g()));
 
 program
   .command("stats [id]")
   .description("tool-usage counts + token/cost aggregation")
-  .option("--agent <agents>", "limit to agents (comma-separated)")
+  .option(AGENT_OPT, AGENT_DESC)
   .option("--project <substr>", "filter by cwd substring")
   .action((id, opts) => cmdStats(id, opts, g()));
 

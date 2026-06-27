@@ -15,6 +15,12 @@
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "error",
     "sonarjs/cognitive-complexity": ["error", 15],
+    "sonarjs/no-identical-functions": "error",
+    "sonarjs/no-duplicated-branches": "error",
+    "sonarjs/no-identical-conditions": "error",
+    "sonarjs/no-identical-expressions": "error",
+    "sonarjs/no-gratuitous-expressions": "error",
+    "sonarjs/no-duplicate-string": "error",
     "no-var": "error",
     "no-param-reassign": "error",
     "eqeqeq": ["error", "smart"],
@@ -51,7 +57,10 @@
       "files": ["test/**", "e2e/**"],
       "rules": {
         "max-lines": "off",
-        "max-lines-per-function": "off"
+        "max-lines-per-function": "off",
+        // Tests legitimately repeat selectors and assertion literals; inline
+        // values read clearer than extracted constants.
+        "sonarjs/no-duplicate-string": "off"
       }
     }
   ]
