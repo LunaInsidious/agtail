@@ -26,7 +26,8 @@
     "format": "biome format --write .",
     "format:check": "biome format .",
     "depcruise": "depcruise src",
-    "check": "pnpm typecheck && pnpm lint && pnpm depcruise && pnpm format:check && pnpm test",
+    "knip": "knip",
+    "check": "pnpm typecheck && pnpm lint && pnpm depcruise && pnpm knip && pnpm format:check && pnpm test",
     "test": "vitest run",
     "test:e2e": "playwright test"
   },
@@ -43,6 +44,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "dependency-cruiser": "^18.0.0",
     "eslint-plugin-sonarjs": "4.1.0",
+    "knip": "^6.21.0",
     "oxlint": "1.71.0",
     "oxlint-plugin-eslint": "1.71.0",
     "react": "^18.3.1",

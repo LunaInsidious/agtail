@@ -10,7 +10,7 @@ import type {
 } from "./types.js";
 import { matchArchived, matchProgrammatic } from "./types.js";
 import type { Adapter, RootOverrides } from "./adapters/types.js";
-import { findAllSessions, selectAdapters } from "./adapters/index.js";
+import { selectAdapters } from "./adapters/index.js";
 import { toolSearchText } from "./format.js";
 import { mask } from "./mask.js";
 import { collect } from "./utils.js";
@@ -240,5 +240,3 @@ export async function searchSessionHits(f: SearchFilters): Promise<SessionHit[]>
   }
   return out;
 }
-
-export { findAllSessions };

@@ -5,7 +5,7 @@ export const AGENTS: Agent[] = ["claude-code", "codex"];
 
 // Search result cap (matching events). User-selectable; 0 means no limit ("All").
 // Hitting the cap means results were truncated and there may be more ("500+").
-export const DEFAULT_LIMIT = 500;
+const DEFAULT_LIMIT = 500;
 export const LIMIT_OPTIONS: { value: number; label: string }[] = [
   { value: 100, label: "100" },
   { value: 500, label: "500" },

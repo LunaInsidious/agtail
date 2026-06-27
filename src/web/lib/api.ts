@@ -1,11 +1,11 @@
 // Types mirror src/core/types.ts (kept in sync by hand; the API is the contract).
 export type Agent = "claude-code" | "codex";
-export type TriFilter = "all" | "only" | "none";
-export type ArchivedFilter = TriFilter;
-export type ProgrammaticFilter = TriFilter;
-export type EventKind = "text" | "thinking" | "tool_use" | "tool_result" | "summary" | "system" | "hook" | "unknown";
+type TriFilter = "all" | "only" | "none";
+type ArchivedFilter = TriFilter;
+type ProgrammaticFilter = TriFilter;
+type EventKind = "text" | "thinking" | "tool_use" | "tool_result" | "summary" | "system" | "hook" | "unknown";
 
-export interface Usage {
+interface Usage {
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;
@@ -60,18 +60,6 @@ export interface SessionMeta {
 export interface Session extends SessionMeta {
   events: Event[];
   usage?: Usage;
-}
-
-export interface Match {
-  agent: Agent;
-  sessionId: string;
-  path: string;
-  ts?: string;
-  kind: EventKind;
-  tool?: string;
-  cwd?: string;
-  archived?: boolean;
-  snippet: string;
 }
 
 export interface SessionHit {

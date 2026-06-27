@@ -7,7 +7,7 @@ import { codexAdapter } from "./codex.js";
 export type { Adapter } from "./types.js";
 
 /** Build all adapters (optionally with per-agent root overrides). */
-export function buildAdapters(overrides: RootOverrides = {}): Adapter[] {
+function buildAdapters(overrides: RootOverrides = {}): Adapter[] {
   return [claudeCodeAdapter(overrides["claude-code"]), codexAdapter(overrides["codex"])];
 }
 
