@@ -18,20 +18,29 @@ function eventText(e: Event): string {
   return parts.join(" ");
 }
 
-// Split text and wrap occurrences of `term` in <mark>.
+// Escape a string for safe use as a literal RegExp source.
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// Split text and wrap occurrences of `term` (case-insensitive) in <mark>.
 function Highlighted({ text, term }: { text: string; term?: string }) {
   if (!term) return <>{text}</>;
-  const lc = text.toLowerCase();
-  const t = term.toLowerCase();
-  const out: React.ReactNode[] = [];
-  let i = 0;
-  for (let j = lc.indexOf(t, i); j !== -1; j = lc.indexOf(t, i)) {
-    if (j > i) out.push(text.slice(i, j));
-    out.push(<mark key={j}>{text.slice(j, j + term.length)}</mark>);
-    i = j + term.length;
-  }
-  out.push(text.slice(i));
-  return <>{out}</>;
+  const matches = [...text.matchAll(new RegExp(escapeRe(term), "gi"))];
+  // Build alternating plain/marked segments from the match positions; `cursor`
+  // tracks where the previous match ended (mutating a const field, not a `let`).
+  const cursor = { at: 0 };
+  const out = matches.flatMap((m) => {
+    const j = m.index;
+    const before = j > cursor.at ? [text.slice(cursor.at, j)] : [];
+    const marked = <mark key={j}>{m[0]}</mark>;
+    cursor.at = j + m[0].length;
+    return [...before, marked];
+  });
+  return (
+    <>
+      {out}
+      {text.slice(cursor.at)}
+    </>
+  );
 }
 
 // A glob tool filter (e.g. "mcp__*") can't seed the exact-match in-session filter.

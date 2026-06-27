@@ -12,14 +12,21 @@ export interface ServeOptions {
   mask?: boolean;
 }
 
+/** `start` plus its `levels` nearest ancestor directories (nearest first). */
+function ancestors(start: string, levels: number): string[] {
+  const dirs = [start];
+  for (const _ of Array.from({ length: levels })) dirs.push(dirname(dirs.at(-1)!));
+  return dirs;
+}
+
 /** Locate the built SPA (dist-web) by walking up from this module. */
 function findWebRoot(): string {
-  let dir = dirname(fileURLToPath(import.meta.url));
-  for (let i = 0; i < 6; i++) {
-    const candidate = join(dir, "dist-web");
-    if (existsSync(join(candidate, "index.html"))) return candidate;
-    dir = dirname(dir);
-  }
+  const start = dirname(fileURLToPath(import.meta.url));
+  // 6 candidates: this module's dir plus 5 ancestors (mirrors the old i<6 loop).
+  const found = ancestors(start, 5)
+    .map((dir) => join(dir, "dist-web"))
+    .find((candidate) => existsSync(join(candidate, "index.html")));
+  if (found) return found;
   throw new Error(
     "dist-web not found. Build the web UI first:  pnpm build  (then `agtail serve`).\n" +
       "For live UI development with no build step, use:  pnpm dev:web",
@@ -56,8 +63,8 @@ export async function startServer(opts: ServeOptions): Promise<void> {
 }
 
 async function serveStatic(webRoot: string, pathname: string, res: import("node:http").ServerResponse): Promise<void> {
-  let rel = decodeURIComponent(pathname);
-  if (rel === "/" || rel === "") rel = "/index.html";
+  const decoded = decodeURIComponent(pathname);
+  const rel = decoded === "/" || decoded === "" ? "/index.html" : decoded;
   const target = resolve(webRoot, "." + normalize(rel));
   // Path-traversal guard: must stay within webRoot.
   const file = target.startsWith(webRoot) && existsSync(target) ? target : join(webRoot, "index.html");

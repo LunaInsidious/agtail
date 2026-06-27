@@ -1,4 +1,5 @@
 import { readdir, stat } from "node:fs/promises";
+import type { Dirent } from "node:fs";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -10,17 +11,20 @@ export function expandHome(p: string): string {
   return p;
 }
 
+/** Read a directory's entries, or [] if it can't be read (missing/permission). */
+async function readEntries(dir: string): Promise<Dirent[]> {
+  try {
+    return await readdir(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+}
+
 /** Recursively collect files matching a predicate. Missing dirs yield []. */
 export async function walkFiles(root: string, match: (name: string) => boolean): Promise<string[]> {
   const out: string[] = [];
   async function recurse(dir: string) {
-    let entries;
-    try {
-      entries = await readdir(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const e of entries) {
+    for (const e of await readEntries(dir)) {
       const full = join(dir, e.name);
       if (e.isDirectory()) await recurse(full);
       else if (e.isFile() && match(e.name)) out.push(full);

@@ -56,21 +56,13 @@ export function aggregateUsage(events: Event[], resolve: PriceResolver): UsageTo
     costUsd: 0,
     unpricedModels: [],
   };
-  const unpriced = new Set<string>();
-  let cost = 0;
-  let anyPriced = false;
+  const withUsage = events.filter((e) => e.usage);
+  for (const e of withUsage) addUsage(totals, e.usage!);
 
-  for (const e of events) {
-    if (!e.usage) continue;
-    addUsage(totals, e.usage);
-    const p = resolve(e.model);
-    if (p) {
-      cost += costOf(e.usage, p);
-      anyPriced = true;
-    } else if (e.model) {
-      unpriced.add(e.model);
-    }
-  }
+  const priced = withUsage.map((e) => ({ usage: e.usage!, model: e.model, price: resolve(e.model) }));
+  const cost = priced.reduce((sum, p) => (p.price ? sum + costOf(p.usage, p.price) : sum), 0);
+  const anyPriced = priced.some((p) => p.price);
+  const unpriced = new Set(priced.filter((p) => !p.price && p.model).map((p) => p.model!));
 
   totals.totalTokens = totals.inputTokens + totals.outputTokens + totals.cacheReadTokens + totals.cacheCreationTokens;
   totals.unpricedModels = [...unpriced];

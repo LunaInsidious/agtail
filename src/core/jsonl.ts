@@ -1,5 +1,16 @@
 import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
+import { isRecord } from "./utils.js";
+
+/** Parse one JSONL line into a record, or null if it's broken/non-object. */
+function parseLine(trimmed: string): Record<string, unknown> | null {
+  try {
+    const obj: unknown = JSON.parse(trimmed);
+    return isRecord(obj) ? obj : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Stream a JSONL file line by line, yielding parsed objects. Broken lines are
@@ -14,14 +25,7 @@ export async function* iterJsonl(path: string): AsyncGenerator<Record<string, un
   for await (const line of rl) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    let obj: unknown;
-    try {
-      obj = JSON.parse(trimmed);
-    } catch {
-      continue;
-    }
-    if (obj && typeof obj === "object") {
-      yield obj as Record<string, unknown>;
-    }
+    const obj = parseLine(trimmed);
+    if (obj) yield obj;
   }
 }

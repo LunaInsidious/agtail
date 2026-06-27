@@ -77,15 +77,12 @@ async function cmdGrep(pattern: string | undefined, opts: any, global: GlobalOpt
     overrides: overrides(global),
   };
 
-  let hits = 0;
-  if (opts.json) {
-    for await (const m of searchSessions(filters)) {
+  const counter = { hits: 0 };
+  for await (const m of searchSessions(filters)) {
+    counter.hits++;
+    if (opts.json) {
       process.stdout.write(JSON.stringify(m) + "\n");
-      hits++;
-    }
-  } else {
-    for await (const m of searchSessions(filters)) {
-      hits++;
+    } else {
       const where = `${agentTag(m.agent)}:${m.sessionId.slice(0, 8)}`;
       const tool = m.tool ? color(` ${m.tool}`, "amber") : "";
       console.log(
@@ -93,7 +90,7 @@ async function cmdGrep(pattern: string | undefined, opts: any, global: GlobalOpt
       );
     }
   }
-  if (!hits && !opts.json) console.log("no matches");
+  if (!counter.hits && !opts.json) console.log("no matches");
 }
 
 // --- list --------------------------------------------------------------------

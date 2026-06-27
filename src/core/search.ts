@@ -9,7 +9,7 @@ import type {
   SessionHit,
 } from "./types.js";
 import { matchArchived, matchProgrammatic } from "./types.js";
-import type { RootOverrides } from "./adapters/types.js";
+import type { Adapter, RootOverrides } from "./adapters/types.js";
 import { findAllSessions, selectAdapters } from "./adapters/index.js";
 import { toolSearchText } from "./format.js";
 import { mask } from "./mask.js";
@@ -72,19 +72,20 @@ function searchableText(e: Event): string {
   return parts.join("\n");
 }
 
+function matchIndex(text: string, re: RegExp | null): number {
+  if (!re) return 0;
+  re.lastIndex = 0;
+  return re.exec(text)?.index ?? 0;
+}
+
 function snippet(text: string, re: RegExp | null, doMask: boolean): string {
-  let idx = 0;
-  if (re) {
-    re.lastIndex = 0;
-    const m = re.exec(text);
-    if (m) idx = m.index;
-  }
+  const idx = matchIndex(text, re);
   const start = Math.max(0, idx - 60);
-  let s = text
+  const body = text
     .slice(start, idx + 120)
     .replace(/\s+/g, " ")
     .trim();
-  if (start > 0) s = "…" + s;
+  const s = start > 0 ? "…" + body : body;
   return doMask ? mask(s, true) : s;
 }
 
@@ -143,11 +144,21 @@ function matchHay(e: Event, ctx: MatchCtx): string | null {
 const cwdMatches = (cwd: string | undefined, needles?: string[]) =>
   !needles || !needles.length || needles.some((n) => (cwd ?? "").toLowerCase().includes(n));
 
+/** Read a session, returning null if it can't be parsed (a broken transcript
+ *  shouldn't abort the whole scan). */
+async function tryReadSession(adapter: Adapter, path: string): Promise<Session | null> {
+  try {
+    return await adapter.readSession(path);
+  } catch {
+    return null;
+  }
+}
+
 /** Stream event-level matches across the selected agents' sessions. */
 // eslint-disable-next-line sonarjs/cognitive-complexity -- match generator: nested scan over sessions × events applying every filter dimension in one pass.
 export async function* searchSessions(f: SearchFilters): AsyncGenerator<Match> {
   const ctx = buildCtx(f);
-  let count = 0;
+  const counter = { matches: 0 };
 
   for (const adapter of selectAdapters(f.agents, f.overrides)) {
     const metas = (await adapter.findSessions()).sort((a, b) => b.mtime - a.mtime);
@@ -155,12 +166,8 @@ export async function* searchSessions(f: SearchFilters): AsyncGenerator<Match> {
       if (!matchArchived(meta, f.archived) || !matchProgrammatic(meta, f.programmatic)) continue;
       if (!matchModels(meta, f.models)) continue;
       if (!cwdMatches(meta.cwd, ctx.cwdNeedles)) continue;
-      let session: Session;
-      try {
-        session = await adapter.readSession(meta.path);
-      } catch {
-        continue;
-      }
+      const session = await tryReadSession(adapter, meta.path);
+      if (!session) continue;
       for (const e of session.events) {
         const hay = matchHay(e, ctx);
         if (hay === null) continue;
@@ -175,7 +182,7 @@ export async function* searchSessions(f: SearchFilters): AsyncGenerator<Match> {
           archived: meta.archived,
           snippet: snippet(hay || (e.tool ?? ""), ctx.re, ctx.doMask),
         };
-        if (f.limit && ++count >= f.limit) return;
+        if (f.limit && ++counter.matches >= f.limit) return;
       }
     }
   }
@@ -199,21 +206,15 @@ export async function searchSessionHits(f: SearchFilters): Promise<SessionHit[]>
       if (!matchArchived(meta, f.archived) || !matchProgrammatic(meta, f.programmatic)) continue;
       if (!matchModels(meta, f.models)) continue;
       if (!cwdMatches(meta.cwd, ctx.cwdNeedles)) continue;
-      let session: Session;
-      try {
-        session = await adapter.readSession(meta.path);
-      } catch {
-        continue;
-      }
-      let matchCount = 0;
-      let firstSnippet = "";
-      for (const e of session.events) {
+      const session = await tryReadSession(adapter, meta.path);
+      if (!session) continue;
+      const hays = session.events.flatMap((e) => {
         const hay = matchHay(e, ctx);
-        if (hay === null) continue;
-        if (matchCount === 0) firstSnippet = snippet(hay || (e.tool ?? ""), ctx.re, ctx.doMask);
-        matchCount++;
-      }
+        return hay === null ? [] : [hay || (e.tool ?? "")];
+      });
+      const matchCount = hays.length;
       if (matchCount === 0) continue;
+      const firstSnippet = snippet(hays[0]!, ctx.re, ctx.doMask);
       out.push({
         agent: session.agent,
         sessionId: session.id,

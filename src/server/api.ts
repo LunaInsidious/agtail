@@ -31,6 +31,19 @@ function parseProgrammatic(v: string | null): ProgrammaticFilter {
   return v === "only" || v === "none" ? v : "all";
 }
 
+/** Memoize a zero-arg factory: the first call runs it, later calls reuse the
+ *  same result (so a cached promise is computed exactly once). */
+function once<T>(factory: () => T): () => T {
+  const cache: { value?: T; set: boolean } = { set: false };
+  return () => {
+    if (!cache.set) {
+      cache.value = factory();
+      cache.set = true;
+    }
+    return cache.value!;
+  };
+}
+
 function maskSession(s: Session): Session {
   return {
     ...s,
@@ -71,9 +84,9 @@ export function createApiHandler(opts: ApiOptions = {}) {
   const ov = opts.overrides ?? {};
   const defaultLimit = opts.searchLimit ?? 500;
   // Facets are a full scan, so compute once and cache for the process lifetime.
-  let facets: Promise<{ tools: string[]; cwds: string[]; models: string[] }> | null = null;
+  const getFacets = once(() => computeFacets(ov));
   // LiteLLM price sheet, loaded once.
-  let prices: ReturnType<typeof loadPriceResolver> | null = null;
+  const getPrices = once(() => loadPriceResolver());
 
   // eslint-disable-next-line sonarjs/cognitive-complexity -- HTTP route dispatcher: one branch per endpoint; breadth, not nesting depth.
   return async function api(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
@@ -113,7 +126,7 @@ export function createApiHandler(opts: ApiOptions = {}) {
           return true;
         }
         const out = doMask ? maskSession(sess) : sess;
-        const resolve = await (prices ??= loadPriceResolver());
+        const resolve = await getPrices();
         // Attach per-turn tokens/cost to events that carry usage.
         const events = out.events.map((e) =>
           e.usage ? { ...e, tokens: usageSum(e.usage), cost: costForModel(e.usage, e.model, resolve) } : e,
@@ -122,8 +135,7 @@ export function createApiHandler(opts: ApiOptions = {}) {
         return true;
       }
       if (url.pathname === "/api/facets") {
-        facets ??= computeFacets(ov);
-        sendJson(200, await facets);
+        sendJson(200, await getFacets());
         return true;
       }
       if (url.pathname === "/api/search") {

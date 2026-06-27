@@ -5,6 +5,8 @@ import type { Event, Session, SessionMeta, Usage } from "../types.js";
 import { iterJsonl } from "../jsonl.js";
 import { hasContent } from "../format.js";
 import { expandHome, mtimeMs, walkFiles } from "../walk.js";
+import { isRecord, obj, str } from "../utils.js";
+import { firstLine } from "./utils.js";
 
 // Claude Code stores one JSONL transcript per session under
 // ~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl (plus subagents/).
@@ -13,17 +15,13 @@ import { expandHome, mtimeMs, walkFiles } from "../walk.js";
 
 const DEFAULT_ROOT = "~/.claude/projects";
 
-function asString(v: unknown): string {
-  return typeof v === "string" ? v : "";
-}
-
 // Claude Code stamps a sentinel like "<synthetic>" on assistant messages it
 // fabricates locally (API errors, "[Request interrupted]" notices) rather than
 // getting from a real inference. These aren't models: angle-bracketed values
 // are dropped so they don't pollute the model list/header or flip cost to
 // "unknown" by looking like an unpriced model.
 function realModel(v: unknown): string | undefined {
-  const s = asString(v);
+  const s = str(v);
   return s && !s.startsWith("<") ? s : undefined;
 }
 
@@ -34,19 +32,20 @@ function textFromContent(content: unknown): string {
   const parts: string[] = [];
   for (const b of content) {
     if (typeof b === "string") parts.push(b);
-    else if (b && typeof b === "object") {
-      const blk = b as Record<string, unknown>;
-      if (blk.type === "text") parts.push(asString(blk.text));
-      else if (blk.type === "tool_result") parts.push(textFromContent(blk.content));
+    else if (isRecord(b)) {
+      if (b.type === "text") parts.push(str(b.text));
+      else if (b.type === "tool_result") parts.push(textFromContent(b.content));
     }
   }
   return parts.filter(Boolean).join("\n");
 }
 
 function usageFrom(u: unknown): Usage | undefined {
-  if (!u || typeof u !== "object") return undefined;
-  const o = u as Record<string, unknown>;
-  const n = (k: string) => (typeof o[k] === "number" ? (o[k] as number) : undefined);
+  if (!isRecord(u)) return undefined;
+  const n = (k: string) => {
+    const v = u[k];
+    return typeof v === "number" ? v : undefined;
+  };
   const usage: Usage = {
     inputTokens: n("input_tokens"),
     outputTokens: n("output_tokens"),
@@ -66,21 +65,14 @@ function scriptNames(cmd: string): string {
 
 /** Summarize a Stop hook-summary system record (carries hookInfos: command,
  * duration, errors) into a readable, searchable line. */
-// eslint-disable-next-line sonarjs/cognitive-complexity -- hook payload summarizer: one branch per hook event shape.
-function hookSummary(obj: Record<string, unknown>): string {
-  const infos = Array.isArray(obj.hookInfos) ? obj.hookInfos : [];
-  const names: string[] = [];
-  let totalMs = 0;
-  for (const h of infos) {
-    const rec = h && typeof h === "object" ? (h as Record<string, unknown>) : {};
-    if (typeof rec.durationMs === "number") totalMs += rec.durationMs;
-    for (const s of scriptNames(asString(rec.command)).split(", ")) if (s && !names.includes(s)) names.push(s);
-  }
-  const errs = Array.isArray(obj.hookErrors) ? obj.hookErrors : [];
+function hookSummary(line: Record<string, unknown>): string {
+  const infos = (Array.isArray(line.hookInfos) ? line.hookInfos : []).map(obj);
+  const totalMs = infos.reduce((sum, h) => sum + (typeof h.durationMs === "number" ? h.durationMs : 0), 0);
+  const names = [...new Set(infos.flatMap((h) => scriptNames(str(h.command)).split(", ")).filter(Boolean))];
+  const errs = Array.isArray(line.hookErrors) ? line.hookErrors : [];
   const nameStr = names.length ? names.join(", ") : `${infos.length} hook(s)`;
-  let text = `Stop · ${nameStr}${totalMs ? ` (${totalMs}ms)` : ""}`;
-  if (errs.length) text += ` — ${errs.length} error(s)`;
-  return text;
+  const base = `Stop · ${nameStr}${totalMs ? ` (${totalMs}ms)` : ""}`;
+  return errs.length ? `${base} — ${errs.length} error(s)` : base;
 }
 
 // Attachment subtypes that record a hook firing (the per-event detail Claude
@@ -95,78 +87,59 @@ const HOOK_ATTACH = new Set([
 
 /** Turn an `attachment` record into an event: a `hook` event for hook attachments
  * (grouped by hookEvent), else an `unknown` labelled with its subtype. */
-function attachmentEvent(obj: Record<string, unknown>, ts: string | undefined, sidechain: boolean): Event {
-  const att = obj.attachment && typeof obj.attachment === "object" ? (obj.attachment as Record<string, unknown>) : {};
-  const atype = asString(att.type);
+function attachmentEvent(line: Record<string, unknown>, ts: string | undefined, sidechain: boolean): Event {
+  const att = obj(line.attachment);
+  const atype = str(att.type);
   if (HOOK_ATTACH.has(atype)) {
-    const hookEvent = asString(att.hookEvent) || "hook";
-    const name = asString(att.hookName) || hookEvent;
-    const cmd = att.command != null ? ` · ${scriptNames(asString(att.command))}` : "";
-    const ms = att.durationMs != null && asString(att.durationMs) !== "" ? ` (${asString(att.durationMs)}ms)` : "";
-    let text: string;
-    if (atype === "hook_non_blocking_error") {
-      const err = asString(att.stderr).split("\n").find(Boolean) || `exit ${asString(att.exitCode)}`;
-      text = `✗ ${name}${cmd} — ${err}`;
-    } else if (atype === "hook_cancelled") {
-      text = `⊘ ${name} cancelled`;
-    } else if (atype === "async_hook_response") {
-      text = `⤳ async ${name}`;
-    } else if (atype === "hook_additional_context") {
-      text = `${name} · +context`;
-    } else {
-      text = `${name}${cmd}${ms}`;
-    }
-    return { kind: "hook", ts, hookEvent, text, sidechain, raw: obj };
+    const hookEvent = str(att.hookEvent) || "hook";
+    const name = str(att.hookName) || hookEvent;
+    const cmd = att.command != null ? ` · ${scriptNames(str(att.command))}` : "";
+    const ms = att.durationMs != null && str(att.durationMs) !== "" ? ` (${str(att.durationMs)}ms)` : "";
+    return { kind: "hook", ts, hookEvent, text: hookText(atype, { name, cmd, ms, att }), sidechain, raw: line };
   }
-  return { kind: "unknown", ts, text: atype ? `attachment · ${atype}` : "attachment", sidechain, raw: obj };
+  return { kind: "unknown", ts, text: atype ? `attachment · ${atype}` : "attachment", sidechain, raw: line };
+}
+
+/** The display line for a hook attachment, keyed by its subtype. */
+function hookText(atype: string, p: { name: string; cmd: string; ms: string; att: Record<string, unknown> }): string {
+  const { name, cmd, ms, att } = p;
+  if (atype === "hook_non_blocking_error") {
+    const err = str(att.stderr).split("\n").find(Boolean) || `exit ${str(att.exitCode)}`;
+    return `✗ ${name}${cmd} — ${err}`;
+  }
+  if (atype === "hook_cancelled") return `⊘ ${name} cancelled`;
+  if (atype === "async_hook_response") return `⤳ async ${name}`;
+  if (atype === "hook_additional_context") return `${name} · +context`;
+  return `${name}${cmd}${ms}`;
 }
 
 /** Normalize one transcript line into zero or more events. seenUsage dedups
  * per-message usage across the multiple lines Claude emits for one response. */
 // eslint-disable-next-line sonarjs/cognitive-complexity -- transcript line normalizer: one branch per message/content shape; keeping the format knowledge in one place is clearer than scattering it.
-function normalizeLine(obj: Record<string, unknown>, seenUsage: Set<string>): Event[] {
-  const events: Event[] = [];
-  const typ = asString(obj.type);
-  const ts = asString(obj.timestamp) || undefined;
-  const sidechain = Boolean(obj.isSidechain);
+function normalizeLine(line: Record<string, unknown>, seenUsage: Set<string>): Event[] {
+  const typ = str(line.type);
+  const ts = str(line.timestamp) || undefined;
+  const sidechain = Boolean(line.isSidechain);
 
-  if (typ === "summary") {
-    events.push({ kind: "summary", ts, text: asString(obj.summary) });
-    return events;
-  }
+  if (typ === "summary") return [{ kind: "summary", ts, text: str(line.summary) }];
 
-  const msg = obj.message;
-  if (!msg || typeof msg !== "object") {
-    if (typ === "system" && Array.isArray(obj.hookInfos) && obj.hookInfos.length) {
-      // Stop hook summary: hookInfos carries command/duration/errors.
-      events.push({ kind: "hook", ts, hookEvent: "Stop", text: hookSummary(obj), sidechain, raw: obj });
-    } else if (typ === "system") {
-      const txt = asString(obj.content) || asString(obj.subtype);
-      events.push({ kind: "system", ts, text: txt, sidechain });
-    } else if (typ === "attachment") {
-      // Per-event hook firings + other tool affordances live in attachments.
-      events.push(attachmentEvent(obj, ts, sidechain));
-    } else if (typ !== "user" && typ !== "assistant") {
-      // Metadata / attachment / hook / file-history etc. — keep, don't drop.
-      events.push({ kind: "unknown", ts, text: typ, sidechain, raw: obj });
-    }
-    return events;
-  }
+  const msg = line.message;
+  if (!isRecord(msg)) return metaEvents(line, typ, ts, sidechain);
 
-  const message = msg as Record<string, unknown>;
-  const role = asString(message.role) || typ || "?";
-  const content = message.content;
-  const model = realModel(message.model);
-  const msgId = asString(message.id);
-  const rawUsage = usageFrom(message.usage);
+  const role = str(msg.role) || typ || "?";
+  const content = msg.content;
+  const model = realModel(msg.model);
+  const msgId = str(msg.id);
+  const rawUsage = usageFrom(msg.usage);
 
   // Claude writes one API response as several lines (one per content block),
   // each repeating the SAME usage. Attach it once per message id so token/cost
-  // isn't multiplied by the number of blocks.
-  let usageAttached = false;
+  // isn't multiplied by the number of blocks. `attached` is the one bit of
+  // running state (a const flag object, mutated in place — not a `let`).
+  const attached = { done: false };
   const attachUsage = (): { model?: string; usage?: Usage } => {
-    if (usageAttached || !rawUsage) return {};
-    usageAttached = true;
+    if (attached.done || !rawUsage) return {};
+    attached.done = true;
     if (msgId) {
       if (seenUsage.has(msgId)) return {};
       seenUsage.add(msgId);
@@ -175,53 +148,77 @@ function normalizeLine(obj: Record<string, unknown>, seenUsage: Set<string>): Ev
   };
 
   if (typeof content === "string") {
-    if (content.trim()) events.push({ kind: "text", ts, role, text: content, sidechain, ...attachUsage() });
-    return events;
+    return content.trim() ? [{ kind: "text", ts, role, text: content, sidechain, ...attachUsage() }] : [];
   }
-  if (!Array.isArray(content)) return events;
+  if (!Array.isArray(content)) return [];
 
-  for (const b of content) {
-    if (!b || typeof b !== "object") continue;
-    const blk = b as Record<string, unknown>;
-    switch (blk.type) {
-      case "text":
-        if (asString(blk.text).trim())
-          events.push({ kind: "text", ts, role, text: asString(blk.text), sidechain, ...attachUsage() });
-        break;
-      case "thinking": {
-        // Recent Claude often persists only a signature, not the reasoning text
-        // — skip those empty blocks instead of emitting blank thinking rows.
-        const think = asString(blk.thinking);
-        if (think.trim()) events.push({ kind: "thinking", ts, role, text: think, sidechain });
-        break;
-      }
-      case "tool_use":
-        events.push({
+  return content.flatMap((b): Event[] => {
+    if (!isRecord(b)) return [];
+    return blockEvent(b, { ts, role, sidechain, attachUsage });
+  });
+}
+
+/** Records with no `message` body: summary lines, system text, attachments, and
+ *  other metadata kinds (kept as `unknown`, never dropped). */
+function metaEvents(line: Record<string, unknown>, typ: string, ts: string | undefined, sidechain: boolean): Event[] {
+  if (typ === "system" && Array.isArray(line.hookInfos) && line.hookInfos.length) {
+    // Stop hook summary: hookInfos carries command/duration/errors.
+    return [{ kind: "hook", ts, hookEvent: "Stop", text: hookSummary(line), sidechain, raw: line }];
+  }
+  if (typ === "system") return [{ kind: "system", ts, text: str(line.content) || str(line.subtype), sidechain }];
+  // Per-event hook firings + other tool affordances live in attachments.
+  if (typ === "attachment") return [attachmentEvent(line, ts, sidechain)];
+  // Metadata / hook / file-history etc. — keep, don't drop.
+  if (typ !== "user" && typ !== "assistant") return [{ kind: "unknown", ts, text: typ, sidechain, raw: line }];
+  return [];
+}
+
+interface BlockCtx {
+  ts: string | undefined;
+  role: string;
+  sidechain: boolean;
+  attachUsage: () => { model?: string; usage?: Usage };
+}
+
+/** Map one content block to its event(s). */
+function blockEvent(blk: Record<string, unknown>, c: BlockCtx): Event[] {
+  const { ts, role, sidechain, attachUsage } = c;
+  switch (blk.type) {
+    case "text":
+      return str(blk.text).trim() ? [{ kind: "text", ts, role, text: str(blk.text), sidechain, ...attachUsage() }] : [];
+    case "thinking": {
+      // Recent Claude often persists only a signature, not the reasoning text
+      // — skip those empty blocks instead of emitting blank thinking rows.
+      const think = str(blk.thinking);
+      return think.trim() ? [{ kind: "thinking", ts, role, text: think, sidechain }] : [];
+    }
+    case "tool_use":
+      return [
+        {
           kind: "tool_use",
           ts,
           role,
           sidechain,
-          tool: asString(blk.name),
-          toolUseId: asString(blk.id),
+          tool: str(blk.name),
+          toolUseId: str(blk.id),
           input: blk.input ?? {},
           ...attachUsage(),
-        });
-        break;
-      case "tool_result":
-        events.push({
+        },
+      ];
+    case "tool_result":
+      return [
+        {
           kind: "tool_result",
           ts,
           role,
           sidechain,
-          toolUseId: asString(blk.tool_use_id),
+          toolUseId: str(blk.tool_use_id),
           result: { isError: Boolean(blk.is_error), text: textFromContent(blk.content) },
-        });
-        break;
-      default:
-        break;
-    }
+        },
+      ];
+    default:
+      return [];
   }
-  return events;
 }
 
 /** Merge tool_result events into their originating tool_use by id. */
@@ -278,56 +275,68 @@ function readSubagentInfo(path: string): SubagentInfo {
   return info;
 }
 
-// eslint-disable-next-line sonarjs/cognitive-complexity -- single-pass session reader: assembles events, usage and subagent links from a heterogeneous log; splitting would fragment the one read.
+/** A title derived from a user message: the slash-command name if present, else
+ *  the first line — skipping injected boilerplate (caveats / tool_result). */
+function titleFromUser(msg: Record<string, unknown>): string | undefined {
+  const t = textFromContent(msg.content).trim();
+  // A slash-command invocation (e.g. "/stickers") titles by the command name.
+  const cmd = t.match(/<command-name>([^<]+)<\/command-name>/);
+  if (cmd) return cmd[1]!.trim();
+  if (t && !t.startsWith("[") && !t.startsWith("<local-command-caveat>") && !t.includes("tool_result")) {
+    return firstLine(t);
+  }
+  return undefined;
+}
+
+// Sequential metadata accumulated while streaming the transcript. First-write-
+// wins fields use ??= ; `ended`/`models`/`messages` keep updating (O(n), one
+// const cursor object — mirrors the codex `meta` accumulator).
+interface Meta {
+  cwd?: string;
+  gitBranch?: string;
+  version?: string;
+  started?: string;
+  ended?: string;
+  title?: string;
+  entrypoint?: string;
+  sdkPrompt: boolean;
+  messages: number;
+  models: string[];
+}
+
+function accumulate(meta: Meta, line: Record<string, unknown>): void {
+  meta.messages++;
+  meta.cwd ??= str(line.cwd) || undefined;
+  meta.gitBranch ??= str(line.gitBranch) || undefined;
+  meta.version ??= str(line.version) || undefined;
+  meta.entrypoint ??= str(line.entrypoint) || undefined;
+  if (str(line.promptSource) === "sdk") meta.sdkPrompt = true;
+  const ts = str(line.timestamp) || undefined;
+  if (ts) {
+    meta.started ??= ts;
+    meta.ended = ts;
+  }
+  const msg = line.message;
+  if (!isRecord(msg)) return;
+  if (meta.title === undefined && msg.role === "user") meta.title ??= titleFromUser(msg);
+  if (msg.role === "assistant") {
+    const mm = realModel(msg.model);
+    if (mm && !meta.models.includes(mm)) meta.models.push(mm);
+  }
+}
+
 async function readSession(path: string): Promise<Session> {
-  let cwd: string | undefined;
-  let gitBranch: string | undefined;
-  let version: string | undefined;
-  const models: string[] = []; // distinct assistant models, first-seen order
-  let started: string | undefined;
-  let ended: string | undefined;
-  let title: string | undefined;
-  let entrypoint: string | undefined;
-  let sdkPrompt = false; // a user turn submitted programmatically (promptSource "sdk")
-  let messages = 0;
+  const meta: Meta = { sdkPrompt: false, messages: 0, models: [] };
   const raw: Event[] = [];
   const seenUsage = new Set<string>();
 
-  for await (const obj of iterJsonl(path)) {
-    messages++;
-    cwd ??= asString(obj.cwd) || undefined;
-    gitBranch ??= asString(obj.gitBranch) || undefined;
-    version ??= asString(obj.version) || undefined;
-    entrypoint ??= asString(obj.entrypoint) || undefined;
-    if (asString(obj.promptSource) === "sdk") sdkPrompt = true;
-    const ts = asString(obj.timestamp) || undefined;
-    if (ts) {
-      started ??= ts;
-      ended = ts;
-    }
-    const msg = obj.message;
-    if (msg && typeof msg === "object") {
-      const m = msg as Record<string, unknown>;
-      if (title === undefined && m.role === "user") {
-        const t = textFromContent(m.content).trim();
-        // A slash-command invocation (e.g. "/stickers") titles by the command
-        // name, not its boilerplate. Skip the injected local-command caveat.
-        const cmd = t.match(/<command-name>([^<]+)<\/command-name>/);
-        if (cmd) {
-          title = cmd[1]!.trim();
-        } else if (t && !t.startsWith("[") && !t.startsWith("<local-command-caveat>") && !t.includes("tool_result")) {
-          title = t.split("\n")[0]!.slice(0, 120);
-        }
-      }
-      if (m.role === "assistant") {
-        const mm = realModel(m.model);
-        if (mm && !models.includes(mm)) models.push(mm);
-      }
-    }
-    for (const e of normalizeLine(obj, seenUsage)) raw.push(e);
+  for await (const line of iterJsonl(path)) {
+    accumulate(meta, line);
+    for (const e of normalizeLine(line, seenUsage)) raw.push(e);
   }
 
   const events = mergeToolResults(raw);
+  const { entrypoint, models } = meta;
   // Machine-driven sessions: launched via the Agent SDK (entrypoint "sdk-cli"/
   // "sdk-py"/…), carrying a programmatically-submitted turn (promptSource
   // "sdk"), or run by the desktop app's background jobs (entrypoint
@@ -335,7 +344,7 @@ async function readSession(path: string): Promise<Session> {
   // interactive coding is entrypoint "cli"). promptSource alone is unreliable:
   // older versions don't stamp "typed" even on real human turns.
   const programmatic =
-    (entrypoint != null && (entrypoint.startsWith("sdk") || entrypoint === "claude-desktop")) || sdkPrompt;
+    (entrypoint != null && (entrypoint.startsWith("sdk") || entrypoint === "claude-desktop")) || meta.sdkPrompt;
   const isSubagent = SUBAGENT_RE.test(path);
   const sub = isSubagent ? readSubagentInfo(path) : undefined;
   // For a subagent, the task description is a clearer title than the raw
@@ -343,24 +352,22 @@ async function readSession(path: string): Promise<Session> {
   const subTitle = sub?.description || undefined;
   // No human prompt but real content (e.g. a resumed/forked session): fall back
   // to the first message rather than an opaque "(no prompt)".
-  if (title === undefined) {
-    const firstText = events.find((e) => e.kind === "text" && e.text?.trim());
-    if (firstText) title = firstText.text!.trim().split("\n")[0]!.slice(0, 120);
-  }
+  const fallbackTitle = events.find((e) => e.kind === "text" && e.text?.trim());
+  const title = meta.title ?? (fallbackTitle ? firstLine(fallbackTitle.text!.trim()) : undefined);
 
   return {
     agent: "claude-code",
     id: basename(path).replace(/\.jsonl$/, ""),
     path,
-    cwd,
-    gitBranch,
-    version,
+    cwd: meta.cwd,
+    gitBranch: meta.gitBranch,
+    version: meta.version,
     model: models[0],
     models,
-    started,
-    ended,
+    started: meta.started,
+    ended: meta.ended,
     title: subTitle ?? title ?? "(no prompt)",
-    messages,
+    messages: meta.messages,
     mtime: await mtimeMs(path),
     events,
     ...(programmatic ? { programmatic: true, origin: entrypoint } : {}),

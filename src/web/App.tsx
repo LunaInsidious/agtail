@@ -91,19 +91,15 @@ export function App() {
   // Status filter mirrors the agent toggles: two chips (active / archived) where
   // neither-or-both selected means "all", matching the agents "none = all" idiom.
   const toggleStatus = (k: "active" | "archived") => {
-    let active = filters.archived === "none";
-    let archived = filters.archived === "only";
-    if (k === "active") active = !active;
-    else archived = !archived;
+    const active = (filters.archived === "none") !== (k === "active");
+    const archived = (filters.archived === "only") !== (k === "archived");
     set({ archived: active && !archived ? "none" : archived && !active ? "only" : "all" });
   };
 
   // Origin filter (interactive vs programmatic), same none/both = all idiom.
   const toggleOrigin = (k: "interactive" | "programmatic") => {
-    let interactive = filters.programmatic === "none";
-    let programmatic = filters.programmatic === "only";
-    if (k === "interactive") interactive = !interactive;
-    else programmatic = !programmatic;
+    const interactive = (filters.programmatic === "none") !== (k === "interactive");
+    const programmatic = (filters.programmatic === "only") !== (k === "programmatic");
     set({ programmatic: interactive && !programmatic ? "none" : programmatic && !interactive ? "only" : "all" });
   };
 

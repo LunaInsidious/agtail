@@ -20,10 +20,10 @@ const TOKEN_PATTERNS: RegExp[] = [
 
 export function mask(text: string, enabled = true): string {
   if (!enabled || typeof text !== "string") return text;
-  let out = text.replace(KV_PATTERN, (_m, k, sep) => `${k}${sep}${REDACTED}`);
-  out = out.replace(AUTH_PATTERN, (_m, k) => `${k}${REDACTED}`);
-  for (const pat of TOKEN_PATTERNS) out = out.replace(pat, REDACTED);
-  return out;
+  const kvMasked = text
+    .replace(KV_PATTERN, (_m, k, sep) => `${k}${sep}${REDACTED}`)
+    .replace(AUTH_PATTERN, (_m, k) => `${k}${REDACTED}`);
+  return TOKEN_PATTERNS.reduce((acc, pat) => acc.replace(pat, REDACTED), kvMasked);
 }
 
 /** Deep-mask strings inside an arbitrary JSON-like value. */
