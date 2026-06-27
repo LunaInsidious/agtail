@@ -1,0 +1,2 @@
+{"type":"user","uuid":"wu1","isSidechain":true,"agentId":"wf123abc","timestamp":"2026-06-24T05:00:00.000Z","cwd":"/Users/testuser/proj","sessionId":"parent-1","version":"2.1.175","message":{"role":"user","content":"Design the skeleton for module X."}}
+{"type":"assistant","uuid":"wa1","isSidechain":true,"agentId":"wf123abc","timestamp":"2026-06-24T05:00:05.000Z","sessionId":"parent-1","message":{"model":"claude-opus-4-8","role":"assistant","content":[{"type":"text","text":"Done."}]}}

@@ -242,9 +242,10 @@ function mergeToolResults(events: Event[]): Event[] {
   return merged;
 }
 
-// A subagent transcript lives at <parentId>/subagents/agent-<id>.jsonl with a
-// sibling agent-<id>.meta.json describing the spawning Task call.
-const SUBAGENT_RE = /[/\\]subagents[/\\][^/\\]+\.jsonl$/;
+// A subagent transcript lives under <parentId>/subagents/ with a sibling
+// agent-<id>.meta.json describing the spawning Task call. Task subagents sit
+// directly in subagents/; Workflow ones nest deeper (subagents/workflows/wf_*/).
+const SUBAGENT_RE = /[/\\]subagents[/\\].*\.jsonl$/;
 
 interface SubagentInfo {
   parentId: string;
@@ -254,7 +255,9 @@ interface SubagentInfo {
 }
 
 function readSubagentInfo(path: string): SubagentInfo {
-  const parentId = basename(dirname(dirname(path))); // .../<parentId>/subagents/file
+  // Parent is the dir just above subagents/, whatever the nesting under it
+  // (subagents/agent-*.jsonl or subagents/workflows/wf_*/agent-*.jsonl).
+  const parentId = basename(path.replace(/[/\\]subagents[/\\].*$/, ""));
   const info: SubagentInfo = { parentId };
   const metaPath = path.replace(/\.jsonl$/, ".meta.json");
   // Optional enrichment; tolerate a missing/corrupt meta the same way iterJsonl
