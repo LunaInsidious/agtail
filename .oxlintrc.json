@@ -11,7 +11,11 @@
     "max-nested-callbacks": ["error", { "max": 4 }],
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "error",
-    "sonarjs/cognitive-complexity": ["error", 15]
+    "sonarjs/cognitive-complexity": ["error", 15],
+    "prefer-const": "error",
+    "no-var": "error",
+    "no-param-reassign": "error",
+    "eqeqeq": ["error", "smart"]
   },
   "overrides": [
     {
