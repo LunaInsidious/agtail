@@ -1,35 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  apiFacets,
-  apiSearch,
-  apiSession,
-  apiSessions,
-  type Agent,
-  type Filters,
-  type Session,
-  type SessionHit,
-  type SessionMeta,
-} from "./lib/api.js";
-import { defaultSavedName, filterChips, homeShort, savedChips, tag, uniqueName } from "./lib/filters.js";
-import { sessionSig, type Seed } from "./lib/util.js";
-import {
-  AGENTS,
-  emptyFilters,
-  LIMIT_OPTIONS,
-  loadRecent,
-  loadSaved,
-  readHistory,
-  RECENT_CAP,
-  RECENT_KEY,
-  RECENT_SHOWN,
-  SAVED_KEY,
-  type HistorySnap,
-  type SavedSearch,
-} from "./lib/state.js";
+import { useEffect, useRef, useState } from "react";
+import { apiFacets, apiSearch, apiSessions, type Filters, type SessionHit, type SessionMeta } from "./lib/api.js";
+import { filterChips, homeShort, tag } from "./lib/filters.js";
+import { AGENTS, LIMIT_OPTIONS, readHistory } from "./lib/state.js";
 import { CheckList } from "./components/CheckList.js";
 import { ManageSaved } from "./components/ManageSaved.js";
 import { HitList, SessionList } from "./components/SessionList.js";
 import { Timeline } from "./components/Timeline.js";
+import { useOpenSession } from "./hooks/useOpenSession.js";
+import { useSavedSearches } from "./hooks/useSavedSearches.js";
+import { useRecentSearches } from "./hooks/useRecentSearches.js";
+import { useHistoryNav } from "./hooks/useHistoryNav.js";
 
 
 export function App() {
@@ -41,108 +21,68 @@ export function App() {
   });
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [hits, setHits] = useState<SessionHit[] | null>(null);
-  const [cur, setCur] = useState<Session | null>(null);
-  const [seed, setSeed] = useState<Seed>({ find: "" });
-  const [loading, setLoading] = useState(false);
   const [searching, setSearching] = useState(false);
   const searchSeq = useRef(0); // guards against stale (out-of-order) search resolutions
   const sessionsSeq = useRef(0); // same, for the session-list fetch
-  const openSeq = useRef(0); // same, for opening a session
-  // LRU cache of opened sessions (events + usage), keyed by agent:id:mask, so
-  // re-opening one — notably via back/forward — is instant with no refetch.
-  const sessionCache = useRef(new Map<string, Session>());
   const [showFilters, setShowFilters] = useState(false);
-  const [showSaved, setShowSaved] = useState(false);
-  // The "Saved searches" manage screen lives at the /saved URL (so Back closes it).
-  const [manageSaved, setManageSaved] = useState(() => window.location.pathname === "/saved");
-  const savedRef = useRef<HTMLDivElement>(null);
   const [limit, setLimit] = useState<number>(() => readHistory().limit);
   const set = (p: Partial<Filters>) => setFilters((f) => ({ ...f, ...p }));
 
-  // Recent search suggestions (text only). Recorded on blur/Enter.
-  const [recent, setRecent] = useState<string[]>(loadRecent);
-  const [recentOpen, setRecentOpen] = useState(false);
-  const [activeIdx, setActiveIdx] = useState(-1); // keyboard-highlighted suggestion (-1 = none)
-  const pushRecent = (q: string) => {
-    const v = q.trim();
-    if (!v) return;
-    setRecent((r) => {
-      const next = [v, ...r.filter((x) => x !== v)].slice(0, RECENT_CAP);
-      localStorage.setItem(RECENT_KEY, JSON.stringify(next));
-      return next;
-    });
-  };
-  const clearRecent = () => {
-    localStorage.removeItem(RECENT_KEY);
-    setRecent([]);
-    setRecentOpen(false);
-  };
-  const selectRecent = (v: string) => {
-    set({ q: v }); // live-search effect re-runs for the picked query
-    pushRecent(v);
-    setRecentOpen(false);
-  };
+  // A content search (query / tool / date / kind) produces snippets; attribute
+  // filters (agent / model / project / status / origin) narrow without one.
+  const hasSearch =
+    filters.q.trim() !== "" ||
+    filters.tools.length > 0 ||
+    filters.since !== "" ||
+    filters.until !== "" ||
+    filters.kinds.length > 0;
+  // ANY active filter shows the filtered "Results"; none → the browse "Sessions".
+  const anyFilter =
+    hasSearch ||
+    filters.agents.length > 0 ||
+    filters.models.length > 0 ||
+    filters.cwds.length > 0 ||
+    filters.archived !== "all" ||
+    filters.programmatic !== "all";
 
-  // Saved searches (named full-filter snapshots). showSaved/savedRef/manageSaved
-  // are declared earlier (used by the outside-click effect / view switch).
-  const [saved, setSaved] = useState<SavedSearch[]>(loadSaved);
-  const persistSaved = (next: SavedSearch[]) => {
-    localStorage.setItem(SAVED_KEY, JSON.stringify(next));
-    setSaved(next);
-  };
-  // Save flow: an inline name field opens pre-filled with an auto-name (focused
-  // and selected), so Enter accepts as-is or typing replaces it — no ugly prompt.
-  const [namingDraft, setNamingDraft] = useState<string | null>(null);
-  const startNaming = () => setNamingDraft(uniqueName(defaultSavedName(filters), saved.map((s) => s.name)));
-  const commitSave = () => {
-    if (!anyFilter || activeSaved) return; // nothing to save / these conditions already saved
-    const base = (namingDraft ?? "").trim() || defaultSavedName(filters);
-    const name = uniqueName(base, saved.map((s) => s.name)); // never collide with an existing name
-    persistSaved([{ id: crypto.randomUUID(), name, filters, limit }, ...saved]);
-    setNamingDraft(null);
-    setShowSaved(false);
-  };
-  const applySaved = (s: SavedSearch) => {
-    leaveManageUrl(); // if applying from the manage screen, turn its /saved entry into "/"
-    setFilters({ ...emptyFilters, ...s.filters }); // merge so older snapshots get new defaults
-    setLimit(s.limit);
-    setShowSaved(false);
-    setManageSaved(false);
-  };
-  const renameSaved = (id: string, name: string) => persistSaved(saved.map((s) => (s.id === id ? { ...s, name } : s)));
-  const deleteSaved = (id: string) => persistSaved(saved.filter((s) => s.id !== id));
-  // The manage screen is its own URL (/saved) so Back/forward, reload, and the
-  // Done button all work. Only the path is exposed — no query content. (The
-  // server falls back to index.html for unknown paths, so /saved reloads.)
-  const openManage = () => {
-    setShowSaved(false);
-    setManageSaved(true);
-    window.history.pushState(window.history.state, "", "/saved");
-  };
-  // Leave /saved by replacing it with "/" (robust even if /saved was opened
-  // directly); browser Back is handled separately by the popstate listener.
-  const leaveManageUrl = () => {
-    if (window.location.pathname === "/saved") window.history.replaceState(window.history.state, "", "/");
-  };
-  const closeManage = () => {
-    setManageSaved(false);
-    leaveManageUrl();
-  };
-  // The saved search the current filters/limit exactly match (if any) — drives
-  // the "★ <name>" highlight instead of lighting up whenever any saved exists.
-  const curKey = JSON.stringify({ filters, limit });
-  const activeSaved = saved.find((s) => JSON.stringify({ filters: { ...emptyFilters, ...s.filters }, limit: s.limit }) === curKey);
-  // Drop any half-typed name when the Saved dropdown closes.
-  useEffect(() => {
-    if (!showSaved) setNamingDraft(null);
-  }, [showSaved]);
+  // Opening a session (cur/seed/loading) with an LRU + stale-while-revalidate cache.
+  const { cur, setCur, seed, loading, open, openParent, scrollTargetRef } = useOpenSession(filters.mask, hits, setFilters);
 
-  // History (back/forward + reload) carries filters, limit AND the open session.
-  // The effects live after `open` is defined (below). histRef holds the snapshot
-  // already in history so a popstate/init never re-pushes it; skipFirstPush drops
-  // the one push that would otherwise fire for the already-in-history mount state.
-  const histRef = useRef("");
-  const skipFirstPush = useRef(true);
+  // Saved searches + the /saved manage screen.
+  const {
+    saved,
+    showSaved,
+    setShowSaved,
+    manageSaved,
+    setManageSaved,
+    namingDraft,
+    setNamingDraft,
+    savedRef,
+    activeSaved,
+    startNaming,
+    commitSave,
+    applySaved,
+    renameSaved,
+    deleteSaved,
+    openManage,
+    closeManage,
+  } = useSavedSearches({ filters, limit, anyFilter, setFilters, setLimit });
+
+  // Recent text-search suggestions under the search box.
+  const {
+    recentOpen,
+    setRecentOpen,
+    activeIdx,
+    setActiveIdx,
+    recentMatches,
+    pushRecent,
+    clearRecent,
+    selectRecent,
+    onSearchKey,
+  } = useRecentSearches(filters.q, (q) => set({ q }));
+
+  // Browser history (back/forward + reload) carries filters, limit, open session.
+  useHistoryNav({ filters, limit, cur, open, setFilters, setLimit, setCur, setManageSaved });
 
   // Status filter mirrors the agent toggles: two chips (active / archived) where
   // neither-or-both selected means "all", matching the agents "none = all" idiom.
@@ -222,23 +162,6 @@ export function App() {
     document.body.style.userSelect = "none";
   };
 
-  // A content search (query / tool / date / kind) produces snippets; attribute
-  // filters (agent / model / project / status / origin) narrow without one.
-  const hasSearch =
-    filters.q.trim() !== "" ||
-    filters.tools.length > 0 ||
-    filters.since !== "" ||
-    filters.until !== "" ||
-    filters.kinds.length > 0;
-  // ANY active filter shows the filtered "Results"; none → the browse "Sessions".
-  const anyFilter =
-    hasSearch ||
-    filters.agents.length > 0 ||
-    filters.models.length > 0 ||
-    filters.cwds.length > 0 ||
-    filters.archived !== "all" ||
-    filters.programmatic !== "all";
-
   // Browse list: only meaningful with no filter active (results come from the
   // search path). So fetch the full list unfiltered and skip while filtering.
   useEffect(() => {
@@ -252,142 +175,6 @@ export function App() {
 
   useEffect(() => {
     apiFacets().then(setFacets);
-  }, []);
-
-  // Stable identity so memoized SessionList/HitList/Timeline don't re-render on
-  // every keystroke (open only depends on the mask setting).
-  const open = useCallback(
-    async (agent: Agent, id: string, withSeed?: Seed) => {
-      setSeed(withSeed ?? { find: "" });
-      const key = `${agent}:${id}:${filters.mask ? 1 : 0}`;
-      const cache = sessionCache.current;
-      const store = (s: Session) => {
-        cache.delete(key); // re-insert so the key becomes most-recently-used
-        cache.set(key, s);
-        if (cache.size > 12) {
-          const oldest = cache.keys().next().value;
-          if (oldest !== undefined) cache.delete(oldest);
-        }
-      };
-      // Guard against out-of-order resolutions: a slow earlier open must not
-      // clobber a newer one (e.g. the mount restore vs. a quick click).
-      const seq = ++openSeq.current;
-      const cached = cache.get(key);
-      if (cached) {
-        // Show the cached session instantly, then revalidate in the background:
-        // a live session may have grown, so refetch and swap in only if changed.
-        cache.delete(key);
-        cache.set(key, cached);
-        setLoading(false);
-        setCur(cached);
-        void apiSession(agent, id, filters.mask)
-          .then((fresh) => {
-            store(fresh);
-            if (openSeq.current === seq && sessionSig(fresh) !== sessionSig(cached)) setCur(fresh);
-          })
-          .catch(() => {
-            /* keep the cached view; a background revalidation failure is non-fatal */
-          });
-        return;
-      }
-      setLoading(true);
-      try {
-        const s = await apiSession(agent, id, filters.mask);
-        if (openSeq.current !== seq) return;
-        store(s);
-        setCur(s);
-      } finally {
-        if (openSeq.current === seq) setLoading(false);
-      }
-    },
-    [filters.mask],
-  );
-
-  // When a row becomes the open session, the row whose id matches this ref is
-  // scrolled to the TOP of the list (vs the default "scroll just into view");
-  // set on a parent jump so the parent lands at the top. One-shot.
-  const scrollTargetRef = useRef<string | null>(null);
-
-  // Opening a session's parent from the timeline header. If the parent is among
-  // the current search results, stay in results and just open (its row gets the
-  // active highlight). Otherwise clear the content search so the list drops back
-  // to the full browse tree, where the parent lives in context. Either way the
-  // parent row is scrolled to the top.
-  const openParent = useCallback(
-    (agent: Agent, id: string) => {
-      const inResults = !!hits?.some((h) => h.sessionId === id);
-      if (!inResults) setFilters((f) => ({ ...f, q: "", tools: [], since: "", until: "", kinds: [] }));
-      scrollTargetRef.current = id;
-      void open(agent, id);
-    },
-    [open, hits],
-  );
-
-  // Keep the latest `open` reachable from the once-registered popstate listener.
-  const openRef = useRef(open);
-  openRef.current = open;
-
-  // Push the CURRENT render's state as a new back-able history entry, deduped
-  // against the entry already in history. Defined per-render so it closes over
-  // the live filters/limit/cur (no stale snapshot).
-  const pushSnap = () => {
-    const snap: HistorySnap = { filters, limit, open: cur ? { agent: cur.agent, id: cur.id } : null };
-    const s = JSON.stringify(snap);
-    if (s === histRef.current) return; // already the current entry
-    histRef.current = s;
-    // Filter/open snapshot lives at the root path (never the /saved manage URL).
-    window.history.pushState({ agtail: snap }, "", "/");
-  };
-  // Signatures that should create an entry the instant they change (discrete
-  // navigation), vs the query text which is debounced while typing.
-  const openSig = cur ? `${cur.agent}:${cur.id}` : "";
-  const chipSig = JSON.stringify([
-    filters.agents, filters.tools, filters.models, filters.cwds, filters.since,
-    filters.until, filters.kinds, filters.mask, filters.archived, filters.programmatic, limit,
-  ]);
-
-  // On mount, restore the open session recorded in history (filters/limit were
-  // already seeded into useState). histRef is set to the restored snapshot so the
-  // restore's own state change doesn't get re-pushed as a new entry.
-  useEffect(() => {
-    const snap = readHistory();
-    histRef.current = JSON.stringify(snap);
-    if (snap.open) void open(snap.open.agent, snap.open.id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Open a session, change a chip, or change the cap → its own entry immediately,
-  // so browsing sessions is fully back/forward-able however fast you click. The
-  // first run is the already-in-history mount state, so it's skipped.
-  useEffect(() => {
-    if (skipFirstPush.current) {
-      skipFirstPush.current = false;
-      return;
-    }
-    pushSnap();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openSig, chipSig]);
-
-  // Typing in the query box settles into a single entry — debounced.
-  useEffect(() => {
-    const t = setTimeout(pushSnap, 300);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.q]);
-
-  // Back/forward: restore the snapshot — filters, limit, and the open session.
-  useEffect(() => {
-    const onPop = () => {
-      const snap = readHistory();
-      histRef.current = JSON.stringify(snap);
-      setFilters(snap.filters);
-      setLimit(snap.limit);
-      if (snap.open) void openRef.current(snap.open.agent, snap.open.id);
-      else setCur(null);
-      setManageSaved(window.location.pathname === "/saved"); // open/close manage to match the URL
-    };
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
   }, []);
 
   // Live search: re-run as filters change (debounced so typing isn't a request
@@ -439,36 +226,6 @@ export function App() {
       .then((h) => { if (searchSeq.current === seq) setHits(h); })
       .finally(() => { if (searchSeq.current === seq) setSearching(false); });
   }
-
-  // Recent searches matching the current text (substring), newest first.
-  const needleLc = filters.q.trim().toLowerCase();
-  // Show matches incl. an exact match of the current text (so typing "hoge"
-  // still surfaces the saved "hoge"); newest first, capped to the shown count.
-  const recentMatches = recent.filter((r) => r.toLowerCase().includes(needleLc)).slice(0, RECENT_SHOWN);
-  // ↓/Tab next, ↑/Shift+Tab prev, Enter accept the highlighted one, Esc close.
-  const onSearchKey = (e: React.KeyboardEvent) => {
-    const open = recentOpen && recentMatches.length > 0;
-    if (e.key === "Escape") {
-      if (recentOpen) {
-        e.preventDefault(); // close the suggestions WITHOUT type=search's native clear
-        setRecentOpen(false);
-        setActiveIdx(-1);
-      }
-      return;
-    }
-    if (!open) return;
-    const last = recentMatches.length - 1;
-    if (e.key === "ArrowDown" || (e.key === "Tab" && !e.shiftKey)) {
-      e.preventDefault();
-      setActiveIdx((i) => Math.min(i + 1, last));
-    } else if (e.key === "ArrowUp" || (e.key === "Tab" && e.shiftKey)) {
-      e.preventDefault();
-      setActiveIdx((i) => Math.max(i - 1, -1));
-    } else if (e.key === "Enter" && activeIdx >= 0) {
-      e.preventDefault(); // pick the highlight instead of submitting the form
-      selectRecent(recentMatches[activeIdx]!);
-    }
-  };
 
   return (
     <div className="app">
