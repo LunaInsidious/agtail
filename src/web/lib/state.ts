@@ -73,7 +73,7 @@ export function readHistory(): HistorySnap {
   return {
     // Merge onto emptyFilters so an older snapshot missing a newer field still
     // gets that field's default.
-    filters: { ...emptyFilters, ...(s?.filters ?? {}) },
+    filters: { ...emptyFilters, ...s?.filters },
     limit: typeof s?.limit === "number" ? s.limit : DEFAULT_LIMIT,
     open: s?.open ?? null,
   };

@@ -36,12 +36,7 @@ function costOf(u: Usage, p: Price): number {
 
 /** Total tokens for one usage record. */
 export function usageSum(u: Usage): number {
-  return (
-    (u.inputTokens ?? 0) +
-    (u.outputTokens ?? 0) +
-    (u.cacheReadTokens ?? 0) +
-    (u.cacheCreationTokens ?? 0)
-  );
+  return (u.inputTokens ?? 0) + (u.outputTokens ?? 0) + (u.cacheReadTokens ?? 0) + (u.cacheCreationTokens ?? 0);
 }
 
 /** USD cost of one usage record, or null if the model has no known price. */
@@ -77,11 +72,7 @@ export function aggregateUsage(events: Event[], resolve: PriceResolver): UsageTo
     }
   }
 
-  totals.totalTokens =
-    totals.inputTokens +
-    totals.outputTokens +
-    totals.cacheReadTokens +
-    totals.cacheCreationTokens;
+  totals.totalTokens = totals.inputTokens + totals.outputTokens + totals.cacheReadTokens + totals.cacheCreationTokens;
   totals.unpricedModels = [...unpriced];
   // If any contributing model was unpriced, the total is incomplete -> null.
   totals.costUsd = unpriced.size > 0 ? null : anyPriced ? cost : null;

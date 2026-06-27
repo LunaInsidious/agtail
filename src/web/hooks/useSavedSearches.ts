@@ -40,11 +40,20 @@ export function useSavedSearches({
     localStorage.setItem(SAVED_KEY, JSON.stringify(next));
     setSaved(next);
   };
-  const startNaming = () => setNamingDraft(uniqueName(defaultSavedName(filters), saved.map((s) => s.name)));
+  const startNaming = () =>
+    setNamingDraft(
+      uniqueName(
+        defaultSavedName(filters),
+        saved.map((s) => s.name),
+      ),
+    );
   const commitSave = () => {
     if (!anyFilter || activeSaved) return; // nothing to save / these conditions already saved
     const base = (namingDraft ?? "").trim() || defaultSavedName(filters);
-    const name = uniqueName(base, saved.map((s) => s.name)); // never collide with an existing name
+    const name = uniqueName(
+      base,
+      saved.map((s) => s.name),
+    ); // never collide with an existing name
     persistSaved([{ id: crypto.randomUUID(), name, filters, limit }, ...saved]);
     setNamingDraft(null);
     setShowSaved(false);
@@ -56,8 +65,7 @@ export function useSavedSearches({
     setShowSaved(false);
     setManageSaved(false);
   };
-  const renameSaved = (id: string, name: string) =>
-    persistSaved(saved.map((s) => (s.id === id ? { ...s, name } : s)));
+  const renameSaved = (id: string, name: string) => persistSaved(saved.map((s) => (s.id === id ? { ...s, name } : s)));
   const deleteSaved = (id: string) => persistSaved(saved.filter((s) => s.id !== id));
   // The manage screen is its own URL (/saved) so Back/forward, reload, and the
   // Done button all work. Only the path is exposed — no query content. (The

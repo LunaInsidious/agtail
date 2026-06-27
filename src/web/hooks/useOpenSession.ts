@@ -8,7 +8,11 @@ export type OpenFn = (agent: Agent, id: string, withSeed?: Seed) => Promise<void
 // stale-while-revalidate for a live session that may have grown), otherwise
 // fetch. A sequence guard drops out-of-order resolutions so a slow earlier open
 // can't clobber a newer one. Also handles "open this session's parent".
-export function useOpenSession(mask: boolean, hits: SessionHit[] | null, setFilters: Dispatch<SetStateAction<Filters>>) {
+export function useOpenSession(
+  mask: boolean,
+  hits: SessionHit[] | null,
+  setFilters: Dispatch<SetStateAction<Filters>>,
+) {
   const [cur, setCur] = useState<Session | null>(null);
   const [seed, setSeed] = useState<Seed>({ find: "" });
   const [loading, setLoading] = useState(false);

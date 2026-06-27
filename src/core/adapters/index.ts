@@ -39,11 +39,7 @@ export async function findAllSessions(
 }
 
 /** Resolve a session by id-prefix (and optional agent) to a full Session. */
-export async function resolveSession(
-  id: string,
-  agents?: Agent[],
-  overrides?: RootOverrides,
-): Promise<Session | null> {
+export async function resolveSession(id: string, agents?: Agent[], overrides?: RootOverrides): Promise<Session | null> {
   const adapters = selectAdapters(agents, overrides);
   for (const a of adapters) {
     const metas = await a.findSessions();

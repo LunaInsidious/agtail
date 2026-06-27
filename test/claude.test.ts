@@ -40,7 +40,9 @@ describe("claude-code adapter", () => {
 
   it("does not let the <synthetic> sentinel flip a priced session's cost to unknown", async () => {
     const sess = await claudeCodeAdapter().readSession(multiModelFixture);
-    const u = aggregateUsage(sess.events, (m) => (m?.includes("opus") || m?.includes("sonnet") ? { input: 1, output: 1 } : null));
+    const u = aggregateUsage(sess.events, (m) =>
+      m?.includes("opus") || m?.includes("sonnet") ? { input: 1, output: 1 } : null,
+    );
     // <synthetic> carried zero usage and is no longer treated as a model, so it
     // is absent from unpricedModels and the total stays a real number.
     expect(u.unpricedModels).toEqual([]);

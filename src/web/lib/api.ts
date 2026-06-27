@@ -3,8 +3,7 @@ export type Agent = "claude-code" | "codex";
 export type TriFilter = "all" | "only" | "none";
 export type ArchivedFilter = TriFilter;
 export type ProgrammaticFilter = TriFilter;
-export type EventKind =
-  | "text" | "thinking" | "tool_use" | "tool_result" | "summary" | "system" | "hook" | "unknown";
+export type EventKind = "text" | "thinking" | "tool_use" | "tool_result" | "summary" | "system" | "hook" | "unknown";
 
 export interface Usage {
   inputTokens: number;

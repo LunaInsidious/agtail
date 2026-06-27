@@ -4,14 +4,11 @@ import type { PriceResolver } from "../src/core/pricing.js";
 import type { Event } from "../src/core/types.js";
 
 // In-memory resolver so tests never hit the network.
-const resolve: PriceResolver = (m) =>
-  m && m.includes("sonnet") ? { input: 3, output: 15 } : null;
+const resolve: PriceResolver = (m) => (m && m.includes("sonnet") ? { input: 3, output: 15 } : null);
 
 describe("cost aggregation", () => {
   it("returns null cost when a model is unpriced (no guessing)", () => {
-    const events: Event[] = [
-      { kind: "text", model: "gpt-5.5", usage: { inputTokens: 100, outputTokens: 10 } },
-    ];
+    const events: Event[] = [{ kind: "text", model: "gpt-5.5", usage: { inputTokens: 100, outputTokens: 10 } }];
     const u = aggregateUsage(events, resolve);
     expect(u.inputTokens).toBe(100);
     expect(u.costUsd).toBeNull();

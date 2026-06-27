@@ -50,8 +50,17 @@ export function useHistoryNav({
   // navigation), vs the query text which is debounced while typing.
   const openSig = cur ? `${cur.agent}:${cur.id}` : "";
   const chipSig = JSON.stringify([
-    filters.agents, filters.tools, filters.models, filters.cwds, filters.since,
-    filters.until, filters.kinds, filters.mask, filters.archived, filters.programmatic, limit,
+    filters.agents,
+    filters.tools,
+    filters.models,
+    filters.cwds,
+    filters.since,
+    filters.until,
+    filters.kinds,
+    filters.mask,
+    filters.archived,
+    filters.programmatic,
+    limit,
   ]);
 
   // On mount, restore the open session recorded in history (filters/limit were

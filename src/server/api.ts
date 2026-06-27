@@ -16,7 +16,10 @@ export interface ApiOptions {
 
 function parseAgents(v: string | null): Agent[] | undefined {
   if (!v) return undefined;
-  const items = v.split(",").map((s) => s.trim()).filter((s) => AGENTS.includes(s as Agent));
+  const items = v
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => AGENTS.includes(s as Agent));
   return items.length ? (items as Agent[]) : undefined;
 }
 
@@ -71,6 +74,7 @@ export function createApiHandler(opts: ApiOptions = {}) {
   // LiteLLM price sheet, loaded once.
   let prices: ReturnType<typeof loadPriceResolver> | null = null;
 
+  // eslint-disable-next-line complexity -- HTTP route dispatcher: one branch per endpoint; the complexity is breadth, not nesting depth.
   return async function api(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     if (!url.pathname.startsWith("/api/")) return false;
@@ -89,12 +93,13 @@ export function createApiHandler(opts: ApiOptions = {}) {
           parseProgrammatic(q.get("programmatic")),
           q.getAll("model").filter(Boolean),
         );
-        const projs = q.getAll("project").filter(Boolean).map((p) => p.toLowerCase());
+        const projs = q
+          .getAll("project")
+          .filter(Boolean)
+          .map((p) => p.toLowerCase());
         sendJson(
           200,
-          projs.length
-            ? sessions.filter((m) => projs.some((p) => (m.cwd ?? "").toLowerCase().includes(p)))
-            : sessions,
+          projs.length ? sessions.filter((m) => projs.some((p) => (m.cwd ?? "").toLowerCase().includes(p))) : sessions,
         );
         return true;
       }

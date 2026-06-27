@@ -32,15 +32,7 @@ export interface Usage {
   cacheCreationTokens?: number;
 }
 
-export type EventKind =
-  | "text"
-  | "thinking"
-  | "tool_use"
-  | "tool_result"
-  | "summary"
-  | "system"
-  | "hook"
-  | "unknown";
+export type EventKind = "text" | "thinking" | "tool_use" | "tool_result" | "summary" | "system" | "hook" | "unknown";
 
 /** One normalized timeline event. tool_result is merged into its tool_use. */
 export interface Event {

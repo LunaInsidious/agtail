@@ -30,6 +30,7 @@ export function isHumanMessage(e: Pick<Event, "role" | "sidechain">): boolean {
 }
 
 /** One-line summary of a tool_use input, keyed by common tool names. */
+// eslint-disable-next-line complexity -- per-tool input summarizer: a switch over known tool names; breadth, not depth.
 export function summarizeInput(tool: string | undefined, input: unknown): string {
   if (input == null || typeof input !== "object") return String(input ?? "");
   const i = input as Record<string, unknown>;

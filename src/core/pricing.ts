@@ -6,8 +6,7 @@ import { homedir } from "node:os";
 // Model prices are sourced from LiteLLM's community-maintained price sheet, so
 // we don't hand-maintain a table. The file is fetched once and cached on disk;
 // a model not listed there yields cost = null (we never guess a price).
-const LITELLM_URL =
-  "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
+const LITELLM_URL = "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
 const CACHE_DIR = join(homedir(), ".cache", "agtail");
 const CACHE_FILE = join(CACHE_DIR, "litellm_prices.json");
 const TTL_MS = 7 * 24 * 60 * 60 * 1000; // refetch weekly

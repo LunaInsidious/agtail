@@ -25,17 +25,24 @@ function SessionRow({
     const top = scrollTarget.current === s.id;
     if (top) scrollTarget.current = null;
     ref.current?.scrollIntoView({ block: top ? "start" : "nearest" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- scrollTarget is a ref and s.id is constant per row; only `active` flipping should scroll.
   }, [active]);
   return (
     <div
       ref={ref}
-      className={"sess" + (child ? " child" : "") + (s.archived || s.programmatic ? " dim" : "") + (active ? " active" : "")}
+      className={
+        "sess" + (child ? " child" : "") + (s.archived || s.programmatic ? " dim" : "") + (active ? " active" : "")
+      }
       onClick={() => onOpen(s.agent, s.id)}
     >
       <div className="row1">
         {child && <span className="branch">↳</span>}
         <span className={"src " + s.agent}>{tag(s.agent)}</span>
-        {s.archived && <span className="archmark" title="archived">🗄</span>}
+        {s.archived && (
+          <span className="archmark" title="archived">
+            🗄
+          </span>
+        )}
         {s.programmatic && (
           <span className="automark" title={PROGRAMMATIC_TIP}>
             🤖 {originLabel(s.origin)}
@@ -126,17 +133,24 @@ function HitRow({
     const top = scrollTarget.current === m.sessionId;
     if (top) scrollTarget.current = null;
     ref.current?.scrollIntoView({ block: top ? "start" : "nearest" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- scrollTarget is a ref and m.sessionId is constant per row; only `active` flipping should scroll.
   }, [active]);
   return (
     <div
       ref={ref}
-      className={"hit" + (child ? " child" : "") + (m.archived || m.programmatic ? " dim" : "") + (active ? " active" : "")}
+      className={
+        "hit" + (child ? " child" : "") + (m.archived || m.programmatic ? " dim" : "") + (active ? " active" : "")
+      }
       onClick={() => onOpen(m.agent, m.sessionId, seed)}
     >
       <div className="row1">
         {child && <span className="branch">↳</span>}
         <span className={"src " + m.agent}>{tag(m.agent)}</span>
-        {m.archived && <span className="archmark" title="archived">🗄</span>}
+        {m.archived && (
+          <span className="archmark" title="archived">
+            🗄
+          </span>
+        )}
         {m.programmatic && (
           <span className="automark" title={PROGRAMMATIC_TIP}>
             🤖 {originLabel(m.origin)}
@@ -180,7 +194,9 @@ export const HitList = memo(function HitList({
   // results keeps them visible and shows a thin loading strip on top.
   if (!hits.length) {
     return searching ? (
-      <div className="empty"><span className="spinner" /> Searching…</div>
+      <div className="empty">
+        <span className="spinner" /> Searching…
+      </div>
     ) : (
       <div className="empty">No matches</div>
     );

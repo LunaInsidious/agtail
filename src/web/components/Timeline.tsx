@@ -37,15 +37,14 @@ function Highlighted({ text, term }: { text: string; term?: string }) {
 // A glob tool filter (e.g. "mcp__*") can't seed the exact-match in-session filter.
 const seedTools = (s: Seed) => (s.tool && !s.tool.includes("*") ? new Set([s.tool]) : new Set<string>());
 
+// eslint-disable-next-line complexity -- root timeline view: breadth of UI state (filters/find/collapse) drives the count; the heavy logic already lives in child components and hooks.
 export const Timeline = memo(function Timeline({
   session,
   seed,
-  onOpen,
   onOpenParent,
 }: {
   session: Session;
   seed: Seed;
-  onOpen: (a: Agent, id: string, seed?: Seed) => void;
   onOpenParent: (a: Agent, id: string) => void;
 }) {
   const [toolFilter, setToolFilter] = useState<Set<string>>(() => seedTools(seed));
@@ -100,7 +99,8 @@ export const Timeline = memo(function Timeline({
   const toggle = (t: string) =>
     setToolFilter((s) => {
       const n = new Set(s);
-      n.has(t) ? n.delete(t) : n.add(t);
+      if (n.has(t)) n.delete(t);
+      else n.add(t);
       return n;
     });
 
@@ -115,17 +115,20 @@ export const Timeline = memo(function Timeline({
   // Distinct hook lifecycle types present, for per-type show/hide (like tools).
   const hookTypes = useMemo(() => {
     const c = new Map<string, number>();
-    for (const e of session.events) if (e.kind === "hook") c.set(e.hookEvent ?? "hook", (c.get(e.hookEvent ?? "hook") ?? 0) + 1);
+    for (const e of session.events)
+      if (e.kind === "hook") c.set(e.hookEvent ?? "hook", (c.get(e.hookEvent ?? "hook") ?? 0) + 1);
     return [...c.entries()].sort((a, b) => b[1] - a[1]);
   }, [session]);
   const toggleHook = (t: string) =>
     setHookFocus((s) => {
       const n = new Set(s);
-      n.has(t) ? n.delete(t) : n.add(t);
+      if (n.has(t)) n.delete(t);
+      else n.add(t);
       return n;
     });
 
   const matchesAt = (i: number) => !!needle && searchText[i]!.includes(needle);
+  // eslint-disable-next-line complexity -- row-visibility predicate: one branch per filter dimension (thinking/meta/hook/tool/find).
   const isHidden = (e: Event, i: number) => {
     if (e.kind === "thinking" && !showThinking) return true;
     if (e.kind === "hook" && !showHooks) return true;
@@ -173,116 +176,128 @@ export const Timeline = memo(function Timeline({
   return (
     <>
       <div className="thead">
-      <div className="meta">
-        <span className={"src " + session.agent}>{tag(session.agent)}</span>
-        {session.archived && <span className="archmark" title="archived">🗄 archived</span>}
-        {session.programmatic && (
-          <span className="automark" title={PROGRAMMATIC_TIP}>
-            🤖 {originLabel(session.origin)}
+        <div className="meta">
+          <span className={"src " + session.agent}>{tag(session.agent)}</span>
+          {session.archived && (
+            <span className="archmark" title="archived">
+              🗄 archived
+            </span>
+          )}
+          {session.programmatic && (
+            <span className="automark" title={PROGRAMMATIC_TIP}>
+              🤖 {originLabel(session.origin)}
+            </span>
+          )}
+          {session.isSubagent && (
+            <span className="subof">
+              ↳ subagent{session.agentName ? ` (${session.agentName})` : ""} of{" "}
+              <a onClick={() => session.parentId && onOpenParent(session.agent, session.parentId)}>
+                {session.parentId?.slice(0, 8)}
+              </a>
+            </span>
+          )}
+          <code>{session.id.slice(0, 8)}</code>
+          <span>{session.cwd}</span>
+          <span>{session.gitBranch ?? "-"}</span>
+          <span title={session.models && session.models.length > 1 ? "models switched mid-session" : undefined}>
+            {session.models?.length ? session.models.join(" → ") : (session.model ?? "")}
           </span>
-        )}
-        {session.isSubagent && (
-          <span className="subof">
-            ↳ subagent{session.agentName ? ` (${session.agentName})` : ""} of{" "}
-            <a onClick={() => session.parentId && onOpenParent(session.agent, session.parentId)}>
-              {session.parentId?.slice(0, 8)}
-            </a>
-          </span>
-        )}
-        <code>{session.id.slice(0, 8)}</code>
-        <span>{session.cwd}</span>
-        <span>{session.gitBranch ?? "-"}</span>
-        <span title={session.models && session.models.length > 1 ? "models switched mid-session" : undefined}>
-          {session.models?.length ? session.models.join(" → ") : (session.model ?? "")}
-        </span>
-        {u && (
-          <span className="cost">
-            {u.totalTokens.toLocaleString()} tok ·{" "}
-            {u.costUsd != null ? `≈ $${u.costUsd.toFixed(4)}` : `cost unknown${u.unpricedModels.length ? ` (${u.unpricedModels.join(",")})` : ""}`}
-          </span>
-        )}
-      </div>
-      <div className="controls">
-        <input
-          type="search"
-          className="insearch"
-          placeholder="Search within this session"
-          value={find}
-          onChange={(e) => setFind(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              goMatch(e.shiftKey ? -1 : 1);
-            }
-          }}
-        />
-        {needle && (
-          <span className="findnav">
-            <button type="button" onClick={() => goMatch(-1)} disabled={!matchPositions.length} title="previous (Shift+Enter)">
-              ↑
-            </button>
-            <button type="button" onClick={() => goMatch(1)} disabled={!matchPositions.length} title="next (Enter)">
-              ↓
-            </button>
-            <span className="count">{matchPositions.length ? `${cur + 1}/${matchPositions.length}` : "0/0"}</span>
-            <label className={matchesOnly ? "on" : ""}>
-              <input type="checkbox" checked={matchesOnly} onChange={(e) => setMatchesOnly(e.target.checked)} /> matches only
+          {u && (
+            <span className="cost">
+              {u.totalTokens.toLocaleString()} tok ·{" "}
+              {u.costUsd != null
+                ? `≈ $${u.costUsd.toFixed(4)}`
+                : `cost unknown${u.unpricedModels.length ? ` (${u.unpricedModels.join(",")})` : ""}`}
+            </span>
+          )}
+        </div>
+        <div className="controls">
+          <input
+            type="search"
+            className="insearch"
+            placeholder="Search within this session"
+            value={find}
+            onChange={(e) => setFind(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                goMatch(e.shiftKey ? -1 : 1);
+              }
+            }}
+          />
+          {needle && (
+            <span className="findnav">
+              <button
+                type="button"
+                onClick={() => goMatch(-1)}
+                disabled={!matchPositions.length}
+                title="previous (Shift+Enter)"
+              >
+                ↑
+              </button>
+              <button type="button" onClick={() => goMatch(1)} disabled={!matchPositions.length} title="next (Enter)">
+                ↓
+              </button>
+              <span className="count">{matchPositions.length ? `${cur + 1}/${matchPositions.length}` : "0/0"}</span>
+              <label className={matchesOnly ? "on" : ""}>
+                <input type="checkbox" checked={matchesOnly} onChange={(e) => setMatchesOnly(e.target.checked)} />{" "}
+                matches only
+              </label>
+            </span>
+          )}
+          {thinkingCount > 0 && (
+            <label className={showThinking ? "on" : ""}>
+              <input type="checkbox" checked={showThinking} onChange={(e) => setShowThinking(e.target.checked)} />{" "}
+              thinking <em>{thinkingCount}</em>
             </label>
-          </span>
-        )}
-        {thinkingCount > 0 && (
-          <label className={showThinking ? "on" : ""}>
-            <input type="checkbox" checked={showThinking} onChange={(e) => setShowThinking(e.target.checked)} /> thinking{" "}
-            <em>{thinkingCount}</em>
+          )}
+          <label className={showMeta ? "on" : ""}>
+            <input type="checkbox" checked={showMeta} onChange={(e) => setShowMeta(e.target.checked)} /> system/meta
           </label>
-        )}
-        <label className={showMeta ? "on" : ""}>
-          <input type="checkbox" checked={showMeta} onChange={(e) => setShowMeta(e.target.checked)} /> system/meta
-        </label>
-        {hookTypes.length > 0 && (
-          <span className="hookgroup">
-            <label className={"hooklabel" + (showHooks ? " on" : "")} title="show/hide all hooks">
-              <input type="checkbox" checked={showHooks} onChange={(e) => setShowHooks(e.target.checked)} /> 🪝 hooks
-            </label>
-            {showHooks && hookTypes.length > 0 && <span className="hooksep" />}
-            {showHooks &&
-              hookTypes.map(([t, n]) => (
-                <button
-                  key={"hook:" + t}
-                  className={"chip" + (hookFocus.has(t) ? " on" : "")}
-                  onClick={() => toggleHook(t)}
-                  title="show only this hook type"
-                >
-                  {t} <em>{n}</em>
-                </button>
-              ))}
-          </span>
-        )}
-        {tools.length > 0 && (
-          <div className="toolmenu" ref={toolsRef}>
-            <button className="chip" onClick={() => setShowTools((v) => !v)} title="filter to specific tools">
-              🔧 tools <span className="caret">▾</span>
-            </button>
-            {/* Selected tools shown inline so the active filter is visible without opening. */}
-            {tools
-              .filter(([t]) => toolFilter.has(t))
-              .map(([t, n]) => (
-                <button key={t} className="chip on" onClick={() => toggle(t)} title="click to remove">
-                  {t} <em>{n}</em> ✕
-                </button>
-              ))}
-            {showTools && (
-              <div className="toolpop">
-                {tools.map(([t, n]) => (
-                  <button key={t} className={"chip" + (toolFilter.has(t) ? " on" : "")} onClick={() => toggle(t)}>
+          {hookTypes.length > 0 && (
+            <span className="hookgroup">
+              <label className={"hooklabel" + (showHooks ? " on" : "")} title="show/hide all hooks">
+                <input type="checkbox" checked={showHooks} onChange={(e) => setShowHooks(e.target.checked)} /> 🪝 hooks
+              </label>
+              {showHooks && hookTypes.length > 0 && <span className="hooksep" />}
+              {showHooks &&
+                hookTypes.map(([t, n]) => (
+                  <button
+                    key={"hook:" + t}
+                    className={"chip" + (hookFocus.has(t) ? " on" : "")}
+                    onClick={() => toggleHook(t)}
+                    title="show only this hook type"
+                  >
                     {t} <em>{n}</em>
                   </button>
                 ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+            </span>
+          )}
+          {tools.length > 0 && (
+            <div className="toolmenu" ref={toolsRef}>
+              <button className="chip" onClick={() => setShowTools((v) => !v)} title="filter to specific tools">
+                🔧 tools <span className="caret">▾</span>
+              </button>
+              {/* Selected tools shown inline so the active filter is visible without opening. */}
+              {tools
+                .filter(([t]) => toolFilter.has(t))
+                .map(([t, n]) => (
+                  <button key={t} className="chip on" onClick={() => toggle(t)} title="click to remove">
+                    {t} <em>{n}</em> ✕
+                  </button>
+                ))}
+              {showTools && (
+                <div className="toolpop">
+                  {tools.map(([t, n]) => (
+                    <button key={t} className={"chip" + (toolFilter.has(t) ? " on" : "")} onClick={() => toggle(t)}>
+                      {t} <em>{n}</em>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
       <Virtuoso
         ref={virtuosoRef}
@@ -314,6 +329,7 @@ function UsageBadge({ e }: { e: Event }) {
   );
 }
 
+// eslint-disable-next-line complexity -- event renderer: a switch over event kinds (text/tool/thinking/hook/system…).
 const EventRow = memo(function EventRow({ e, highlight }: { e: Event; highlight?: string }) {
   if (e.kind === "tool_use") {
     return (
@@ -470,6 +486,7 @@ function Collapsible({
   // Highlight match defaults the block open (but stays user-toggleable).
   const matches = !!highlight && text.toLowerCase().includes(highlight.toLowerCase());
   const [open, setOpen] = useState(!heavy || matches);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new find match should re-open; `heavy` is derived from props and must not clobber a user toggle.
   useEffect(() => setOpen(!heavy || matches), [matches]);
   if (!text) return null;
 
@@ -506,6 +523,7 @@ function Collapsible({
 }
 
 // Mirror of core/format.ts summarizeInput for the browser.
+// eslint-disable-next-line complexity -- per-tool input summarizer: a switch over known tool names; breadth, not depth.
 function summarizeInput(tool: string | undefined, input: unknown): string {
   if (input == null || typeof input !== "object") return String(input ?? "");
   const i = input as Record<string, unknown>;

@@ -43,7 +43,10 @@ function overrides(o: GlobalOpts): RootOverrides {
 
 function parseAgents(v?: string): Agent[] | undefined {
   if (!v) return undefined;
-  const items = v.split(",").map((s) => s.trim()).filter(Boolean);
+  const items = v
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
   const bad = items.filter((i) => !AGENTS.includes(i as Agent));
   if (bad.length) {
     console.error(`unknown agent(s): ${bad.join(", ")}. valid: ${AGENTS.join(", ")}`);
@@ -86,8 +89,7 @@ async function cmdGrep(pattern: string | undefined, opts: any, global: GlobalOpt
       const where = `${agentTag(m.agent)}:${m.sessionId.slice(0, 8)}`;
       const tool = m.tool ? color(` ${m.tool}`, "amber") : "";
       console.log(
-        `${color(where, "amber")} ${color(shortTs(m.ts), "gray")} ` +
-          `${color(m.kind, "dim")}${tool}  ${m.snippet}`,
+        `${color(where, "amber")} ${color(shortTs(m.ts), "gray")} ` + `${color(m.kind, "dim")}${tool}  ${m.snippet}`,
       );
     }
   }
@@ -96,7 +98,12 @@ async function cmdGrep(pattern: string | undefined, opts: any, global: GlobalOpt
 
 // --- list --------------------------------------------------------------------
 async function cmdList(opts: any, global: GlobalOpts) {
-  const all = await findAllSessions(parseAgents(opts.agent), overrides(global), archivedFilter(global), programmaticFilter(global));
+  const all = await findAllSessions(
+    parseAgents(opts.agent),
+    overrides(global),
+    archivedFilter(global),
+    programmaticFilter(global),
+  );
   const proj = opts.project?.toLowerCase();
   const pass = (m: (typeof all)[number]) =>
     (!proj || (m.cwd ?? "").toLowerCase().includes(proj)) &&
@@ -144,6 +151,7 @@ async function cmdList(opts: any, global: GlobalOpts) {
 }
 
 // --- show --------------------------------------------------------------------
+// eslint-disable-next-line complexity -- top-level CLI command: resolves a session and prints it; one branch per output flag.
 async function cmdShow(id: string, opts: any, global: GlobalOpts) {
   const sess = await resolveSession(id, parseAgents(opts.agent), overrides(global));
   if (!sess) return console.log("no matching session:", id);
@@ -156,7 +164,9 @@ async function cmdShow(id: string, opts: any, global: GlobalOpts) {
   if (sess.isSubagent) {
     console.log(color(`  ↳ subagent (${sess.agentName ?? "?"}) of ${sess.parentId}`, "violet"));
   }
-  console.log(color(`  ${tilde(sess.cwd)}  branch=${sess.gitBranch ?? "-"}  ${sess.model ?? ""}  v${sess.version ?? "?"}`, "dim"));
+  console.log(
+    color(`  ${tilde(sess.cwd)}  branch=${sess.gitBranch ?? "-"}  ${sess.model ?? ""}  v${sess.version ?? "?"}`, "dim"),
+  );
   console.log();
   const resolve = await loadPriceResolver();
   // Per-turn token/cost badge for events carrying usage.
@@ -181,10 +191,12 @@ async function cmdShow(id: string, opts: any, global: GlobalOpts) {
     } else if (e.kind === "text") {
       // Inside a sidechain, a "user" message is the parent agent, not the human.
       const who = isHumanMessage(e) ? "cyan" : e.sidechain && e.role === "user" ? "violet" : "rst";
-      const body = (doMask ? maskText(e.text ?? "", true) : e.text ?? "").trim().replace(/\n/g, "\n           ");
+      const body = (doMask ? maskText(e.text ?? "", true) : (e.text ?? "")).trim().replace(/\n/g, "\n           ");
       console.log(`${ts} ${sc}${color(displayRole(e), who as any)}: ${body.slice(0, 1000)}${usageBadge(e)}`);
     } else if (e.kind === "thinking") {
-      console.log(`${ts} ${sc}${color("thinking", "violet")} ${color((e.text ?? "").slice(0, 120).replace(/\n/g, " "), "dim")}`);
+      console.log(
+        `${ts} ${sc}${color("thinking", "violet")} ${color((e.text ?? "").slice(0, 120).replace(/\n/g, " "), "dim")}`,
+      );
     } else if (e.kind === "hook") {
       console.log(`${ts} ${sc}${color("🪝 " + (e.text ?? ""), "amber")}`);
     } else if (e.kind === "summary") {

@@ -1,4 +1,13 @@
-import type { Agent, ArchivedFilter, ProgrammaticFilter, Event, EventKind, Match, Session, SessionHit } from "./types.js";
+import type {
+  Agent,
+  ArchivedFilter,
+  ProgrammaticFilter,
+  Event,
+  EventKind,
+  Match,
+  Session,
+  SessionHit,
+} from "./types.js";
 import { matchArchived, matchProgrammatic } from "./types.js";
 import type { RootOverrides } from "./adapters/types.js";
 import { findAllSessions, selectAdapters } from "./adapters/index.js";
@@ -70,7 +79,10 @@ function snippet(text: string, re: RegExp | null, doMask: boolean): string {
     if (m) idx = m.index;
   }
   const start = Math.max(0, idx - 60);
-  let s = text.slice(start, idx + 120).replace(/\s+/g, " ").trim();
+  let s = text
+    .slice(start, idx + 120)
+    .replace(/\s+/g, " ")
+    .trim();
   if (start > 0) s = "…" + s;
   return doMask ? mask(s, true) : s;
 }
@@ -176,6 +188,7 @@ export async function search(f: SearchFilters): Promise<Match[]> {
 
 /** Session-level search: one entry per matching session, with a representative
  *  snippet and match count. `limit` bounds the number of sessions returned. */
+// eslint-disable-next-line complexity -- match scorer: accumulates per-kind match metadata in a single pass over each session.
 export async function searchSessionHits(f: SearchFilters): Promise<SessionHit[]> {
   const ctx = buildCtx(f);
   const out: SessionHit[] = [];

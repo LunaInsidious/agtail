@@ -1,4 +1,4 @@
-import { basename, dirname } from "node:path";
+import { basename } from "node:path";
 import { readFileSync, existsSync } from "node:fs";
 import type { Adapter } from "./types.js";
 import type { Event, Session, SessionMeta, Usage } from "../types.js";
@@ -122,6 +122,7 @@ function attachmentEvent(obj: Record<string, unknown>, ts: string | undefined, s
 
 /** Normalize one transcript line into zero or more events. seenUsage dedups
  * per-message usage across the multiple lines Claude emits for one response. */
+// eslint-disable-next-line complexity -- transcript line normalizer: one branch per message/content shape; keeping the format knowledge in one place is clearer than scattering it.
 function normalizeLine(obj: Record<string, unknown>, seenUsage: Set<string>): Event[] {
   const events: Event[] = [];
   const typ = asString(obj.type);
@@ -275,6 +276,7 @@ function readSubagentInfo(path: string): SubagentInfo {
   return info;
 }
 
+// eslint-disable-next-line complexity -- single-pass session reader: assembles events, usage and subagent links from a heterogeneous log; splitting would fragment the one read.
 async function readSession(path: string): Promise<Session> {
   let cwd: string | undefined;
   let gitBranch: string | undefined;

@@ -36,7 +36,10 @@ export function savedChips(f: Filters): { key: string; label: string }[] {
 export function defaultSavedName(f: Filters): string {
   const chips = savedChips(f);
   if (!chips.length) return "Saved search";
-  const head = chips.slice(0, 2).map((c) => c.label).join(" · ");
+  const head = chips
+    .slice(0, 2)
+    .map((c) => c.label)
+    .join(" · ");
   const rest = chips.length - 2;
   return rest > 0 ? `${head} +${rest}` : head;
 }

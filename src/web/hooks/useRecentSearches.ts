@@ -60,5 +60,15 @@ export function useRecentSearches(query: string, applyQuery: (q: string) => void
     }
   };
 
-  return { recentOpen, setRecentOpen, activeIdx, setActiveIdx, recentMatches, pushRecent, clearRecent, selectRecent, onSearchKey };
+  return {
+    recentOpen,
+    setRecentOpen,
+    activeIdx,
+    setActiveIdx,
+    recentMatches,
+    pushRecent,
+    clearRecent,
+    selectRecent,
+    onSearchKey,
+  };
 }

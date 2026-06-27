@@ -55,11 +55,7 @@ export async function startServer(opts: ServeOptions): Promise<void> {
   console.log("Stop with Ctrl-C");
 }
 
-async function serveStatic(
-  webRoot: string,
-  pathname: string,
-  res: import("node:http").ServerResponse,
-): Promise<void> {
+async function serveStatic(webRoot: string, pathname: string, res: import("node:http").ServerResponse): Promise<void> {
   let rel = decodeURIComponent(pathname);
   if (rel === "/" || rel === "") rel = "/index.html";
   const target = resolve(webRoot, "." + normalize(rel));

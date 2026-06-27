@@ -19,9 +19,9 @@ const f = (o: Partial<Filters>): Filters => ({ ...base, ...o });
 
 describe("filterChips", () => {
   it("emits one chip per condition and excludes the query", () => {
-    const labels = filterChips(f({ q: "hi", agents: ["codex"], models: ["opus"], cwds: ["/Users/x/proj"], mask: true })).map(
-      (c) => c.label,
-    );
+    const labels = filterChips(
+      f({ q: "hi", agents: ["codex"], models: ["opus"], cwds: ["/Users/x/proj"], mask: true }),
+    ).map((c) => c.label);
     expect(labels).toEqual(["codex", "✦ opus", "📁 ~/proj", "🔒 mask"]); // homeShort + no q
   });
 

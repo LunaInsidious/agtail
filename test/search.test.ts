@@ -46,7 +46,11 @@ describe("session-level search", () => {
 
   it("carries subagent linkage on hits so search results can nest", async () => {
     const subDir = fileURLToPath(new URL("./fixtures-sub", import.meta.url));
-    const hits = await searchSessionHits({ pattern: "repo", agents: ["claude-code"], overrides: { "claude-code": subDir } });
+    const hits = await searchSessionHits({
+      pattern: "repo",
+      agents: ["claude-code"],
+      overrides: { "claude-code": subDir },
+    });
     const sub = hits.find((h) => h.isSubagent);
     expect(sub).toBeDefined();
     expect(sub!.parentId).toBe("parent-1");

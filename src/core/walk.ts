@@ -11,10 +11,7 @@ export function expandHome(p: string): string {
 }
 
 /** Recursively collect files matching a predicate. Missing dirs yield []. */
-export async function walkFiles(
-  root: string,
-  match: (name: string) => boolean,
-): Promise<string[]> {
+export async function walkFiles(root: string, match: (name: string) => boolean): Promise<string[]> {
   const out: string[] = [];
   async function recurse(dir: string) {
     let entries;

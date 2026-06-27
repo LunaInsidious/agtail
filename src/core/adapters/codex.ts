@@ -57,6 +57,7 @@ interface Parsed {
   origin?: string;
 }
 
+// eslint-disable-next-line complexity -- rollout parser: one branch per record kind; inherently branchy. Top candidate for future extraction.
 async function parse(path: string): Promise<Parsed> {
   const events: Event[] = [];
   const pending = new Map<string, Event>(); // call_id -> tool_use awaiting result

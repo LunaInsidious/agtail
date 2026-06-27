@@ -11,7 +11,7 @@ import { useSavedSearches } from "./hooks/useSavedSearches.js";
 import { useRecentSearches } from "./hooks/useRecentSearches.js";
 import { useHistoryNav } from "./hooks/useHistoryNav.js";
 
-
+// eslint-disable-next-line complexity -- root container: breadth of UI state and handlers; already decomposed into hooks/ and components/. Ratchet target.
 export function App() {
   const [filters, setFilters] = useState<Filters>(() => readHistory().filters);
   const [facets, setFacets] = useState<{ tools: string[]; cwds: string[]; models: string[] }>({
@@ -46,7 +46,11 @@ export function App() {
     filters.programmatic !== "all";
 
   // Opening a session (cur/seed/loading) with an LRU + stale-while-revalidate cache.
-  const { cur, setCur, seed, loading, open, openParent, scrollTargetRef } = useOpenSession(filters.mask, hits, setFilters);
+  const { cur, setCur, seed, loading, open, openParent, scrollTargetRef } = useOpenSession(
+    filters.mask,
+    hits,
+    setFilters,
+  );
 
   // Saved searches + the /saved manage screen.
   const {
@@ -115,6 +119,7 @@ export function App() {
     };
     window.addEventListener("mousedown", onDown);
     return () => window.removeEventListener("mousedown", onDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setShowSaved/savedRef (from useSavedSearches) are a stable setter + ref; the listener only needs re-binding when a popover toggles.
   }, [showFilters, showSaved]);
 
   // Applied filters render as always-visible removable chips; the controls to
@@ -133,7 +138,17 @@ export function App() {
   const chips = filterChips(filters);
 
   const clearAll = () =>
-    set({ agents: [], tools: [], models: [], cwds: [], since: "", until: "", archived: "all", programmatic: "all", mask: false });
+    set({
+      agents: [],
+      tools: [],
+      models: [],
+      cwds: [],
+      since: "",
+      until: "",
+      archived: "all",
+      programmatic: "all",
+      mask: false,
+    });
 
   // Hits are matching sessions. With a finite cap, reaching it means more
   // sessions matched than were returned; "All" (limit 0) never truncates.
@@ -177,6 +192,24 @@ export function App() {
     apiFacets().then(setFacets);
   }, []);
 
+  // A signature of every field the live search depends on, so the effect's
+  // dependency list is one statically-checkable value rather than inline joins.
+  const searchSig = JSON.stringify([
+    anyFilter,
+    filters.q,
+    filters.agents,
+    filters.tools,
+    filters.models,
+    filters.cwds,
+    filters.since,
+    filters.until,
+    filters.kinds,
+    filters.mask,
+    filters.archived,
+    filters.programmatic,
+    limit,
+  ]);
+
   // Live search: re-run as filters change (debounced so typing isn't a request
   // per keystroke). Does NOT toggle the main `loading` — searching must not blank
   // the open session's timeline.
@@ -193,26 +226,16 @@ export function App() {
       apiSearch(filters, limit)
         // Ignore a stale resolution so an older search can't clear the loading
         // state (or overwrite results) while a newer one is still pending.
-        .then((h) => { if (searchSeq.current === seq) setHits(h); })
-        .finally(() => { if (searchSeq.current === seq) setSearching(false); });
+        .then((h) => {
+          if (searchSeq.current === seq) setHits(h);
+        })
+        .finally(() => {
+          if (searchSeq.current === seq) setSearching(false);
+        });
     }, 250);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    anyFilter,
-    filters.q,
-    filters.agents.join(","),
-    filters.tools.join(","),
-    filters.models.join(","),
-    filters.cwds.join(","),
-    filters.since,
-    filters.until,
-    filters.kinds.join(","),
-    filters.mask,
-    filters.archived,
-    filters.programmatic,
-    limit,
-  ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- searchSig encodes every field below; the effect closes over `filters`/`limit` directly.
+  }, [searchSig]);
 
   // Enter / Search button: run immediately (skip the debounce).
   function runSearch(e?: React.FormEvent) {
@@ -223,8 +246,12 @@ export function App() {
     setSearching(true);
     const seq = ++searchSeq.current;
     apiSearch(filters, limit)
-      .then((h) => { if (searchSeq.current === seq) setHits(h); })
-      .finally(() => { if (searchSeq.current === seq) setSearching(false); });
+      .then((h) => {
+        if (searchSeq.current === seq) setHits(h);
+      })
+      .finally(() => {
+        if (searchSeq.current === seq) setSearching(false);
+      });
   }
 
   return (
@@ -378,7 +405,9 @@ export function App() {
               <CheckList
                 label="tool"
                 options={[
-                  ...(facets.tools.some((t) => t.startsWith("mcp__")) ? [{ value: "mcp__*", label: "mcp__* (all MCP)" }] : []),
+                  ...(facets.tools.some((t) => t.startsWith("mcp__"))
+                    ? [{ value: "mcp__*", label: "mcp__* (all MCP)" }]
+                    : []),
                   ...facets.tools.map((t) => ({ value: t, label: t })),
                 ]}
                 selected={filters.tools}
@@ -399,8 +428,18 @@ export function App() {
               <div className="frow">
                 <span className="lbl">date range</span>
                 <div className="dates">
-                  <input type="date" value={filters.since} onChange={(e) => set({ since: e.target.value })} title="since" />
-                  <input type="date" value={filters.until} onChange={(e) => set({ until: e.target.value })} title="until" />
+                  <input
+                    type="date"
+                    value={filters.since}
+                    onChange={(e) => set({ since: e.target.value })}
+                    title="since"
+                  />
+                  <input
+                    type="date"
+                    value={filters.until}
+                    onChange={(e) => set({ until: e.target.value })}
+                    title="until"
+                  />
                 </div>
               </div>
               <div className="frow">
@@ -413,9 +452,7 @@ export function App() {
                         checked={filters.agents.includes(a)}
                         onChange={(e) =>
                           set({
-                            agents: e.target.checked
-                              ? [...filters.agents, a]
-                              : filters.agents.filter((x) => x !== a),
+                            agents: e.target.checked ? [...filters.agents, a] : filters.agents.filter((x) => x !== a),
                           })
                         }
                       />
@@ -428,11 +465,19 @@ export function App() {
                 <span className="lbl">status</span>
                 <span className="agents">
                   <label className={filters.archived === "none" ? "on" : ""}>
-                    <input type="checkbox" checked={filters.archived === "none"} onChange={() => toggleStatus("active")} />
+                    <input
+                      type="checkbox"
+                      checked={filters.archived === "none"}
+                      onChange={() => toggleStatus("active")}
+                    />
                     active
                   </label>
                   <label className={filters.archived === "only" ? "on" : ""}>
-                    <input type="checkbox" checked={filters.archived === "only"} onChange={() => toggleStatus("archived")} />
+                    <input
+                      type="checkbox"
+                      checked={filters.archived === "only"}
+                      onChange={() => toggleStatus("archived")}
+                    />
                     🗄 archived
                   </label>
                 </span>
@@ -441,11 +486,19 @@ export function App() {
                 <span className="lbl">origin</span>
                 <span className="agents">
                   <label className={filters.programmatic === "none" ? "on" : ""}>
-                    <input type="checkbox" checked={filters.programmatic === "none"} onChange={() => toggleOrigin("interactive")} />
+                    <input
+                      type="checkbox"
+                      checked={filters.programmatic === "none"}
+                      onChange={() => toggleOrigin("interactive")}
+                    />
                     interactive
                   </label>
                   <label className={filters.programmatic === "only" ? "on" : ""}>
-                    <input type="checkbox" checked={filters.programmatic === "only"} onChange={() => toggleOrigin("programmatic")} />
+                    <input
+                      type="checkbox"
+                      checked={filters.programmatic === "only"}
+                      onChange={() => toggleOrigin("programmatic")}
+                    />
                     🤖 programmatic
                   </label>
                 </span>
@@ -527,7 +580,7 @@ export function App() {
               or search across all sessions from the bar above ↑
             </div>
           )}
-          {!loading && cur && <Timeline session={cur} seed={seed} onOpen={open} onOpenParent={openParent} />}
+          {!loading && cur && <Timeline session={cur} seed={seed} onOpenParent={openParent} />}
         </section>
       </main>
       {manageSaved && (
@@ -542,5 +595,3 @@ export function App() {
     </div>
   );
 }
-
-

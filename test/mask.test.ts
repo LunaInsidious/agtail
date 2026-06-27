@@ -7,7 +7,7 @@ describe("mask", () => {
     expect(mask("key sk-" + "b".repeat(30))).toContain("<redacted>");
   });
   it("redacts KEY=value pairs", () => {
-    expect(mask('API_KEY="supersecretvalue"')).toBe('API_KEY=<redacted>');
+    expect(mask('API_KEY="supersecretvalue"')).toBe("API_KEY=<redacted>");
   });
   it("leaves ordinary text untouched", () => {
     expect(mask("just a normal sentence")).toBe("just a normal sentence");
