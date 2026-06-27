@@ -40,9 +40,10 @@ module.exports = {
     {
       name: "web-is-browser-only",
       severity: "error",
-      comment: "Browser code must not import the Node-only server or cli layers (it talks to the server over HTTP).",
+      comment:
+        "Browser code must not import core/server/cli (all Node-side). It mirrors the few types it needs (web/lib/api.ts) and talks to the server over HTTP, so the bundle never pulls in node:fs/path etc. This is also why summarizeInput is duplicated in web rather than imported from core.",
       from: { path: "^src/web/" },
-      to: { path: "^src/(server|cli)/" },
+      to: { path: "^src/(core|server|cli)/" },
     },
     {
       name: "node-layers-no-web",
