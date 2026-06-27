@@ -7,8 +7,10 @@ import { homedir } from "node:os";
 // we don't hand-maintain a table. The file is fetched once and cached on disk;
 // a model not listed there yields cost = null (we never guess a price).
 const LITELLM_URL = "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
-const CACHE_DIR = join(homedir(), ".cache", "agtail");
-const CACHE_FILE = join(CACHE_DIR, "litellm_prices.json");
+// Cache under XDG_CACHE_HOME (falling back to ~/.cache per the XDG spec).
+// Read lazily so a test (or a relocated cache) is picked up without a reimport.
+const cacheDir = () => join(process.env.XDG_CACHE_HOME || join(homedir(), ".cache"), "agtail");
+const cacheFile = () => join(cacheDir(), "litellm_prices.json");
 const TTL_MS = 7 * 24 * 60 * 60 * 1000; // routine refetch cadence (weekly)
 // When asked to price a model the cached sheet doesn't know, refetch on demand —
 // it may be newly added to LiteLLM. Bounded by the cache's age so a genuinely
@@ -35,9 +37,9 @@ interface LiteLLMEntry {
 type Sheet = Record<string, LiteLLMEntry>;
 
 async function cacheAgeMs(): Promise<number> {
-  if (!existsSync(CACHE_FILE)) return Infinity;
+  if (!existsSync(cacheFile())) return Infinity;
   try {
-    return Date.now() - (await stat(CACHE_FILE)).mtimeMs;
+    return Date.now() - (await stat(cacheFile())).mtimeMs;
   } catch {
     return Infinity;
   }
@@ -45,7 +47,7 @@ async function cacheAgeMs(): Promise<number> {
 
 async function readCache(): Promise<Sheet | null> {
   try {
-    return JSON.parse(await readFile(CACHE_FILE, "utf-8"));
+    return JSON.parse(await readFile(cacheFile(), "utf-8"));
   } catch {
     return null; // missing or corrupt
   }
@@ -56,8 +58,8 @@ async function fetchAndCache(): Promise<Sheet | null> {
     const res = await fetch(LITELLM_URL);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const text = await res.text();
-    await mkdir(CACHE_DIR, { recursive: true });
-    await writeFile(CACHE_FILE, text);
+    await mkdir(cacheDir(), { recursive: true });
+    await writeFile(cacheFile(), text);
     return JSON.parse(text);
   } catch (err) {
     // Offline: a stale cache is still real pricing; use it rather than nothing.
@@ -133,6 +135,13 @@ function buildResolver(raw: Sheet | null): Resolver {
 // overwrites the file, dropping the markers so they get re-checked.
 const memo: { sheet: Sheet | null; resolver: Resolver | null } = { sheet: null, resolver: null };
 
+/** Drop the in-memory price cache so the next loadPriceResolver re-reads from disk
+ *  (after a manual cache update, or to isolate tests). */
+export function resetPriceCache(): void {
+  memo.sheet = null;
+  memo.resolver = null;
+}
+
 async function ensureLoaded(): Promise<Resolver> {
   if (!memo.resolver) {
     memo.sheet = await loadRawPrices();
@@ -150,8 +159,8 @@ async function markAbsent(models: string[]): Promise<Resolver> {
   memo.sheet = sheet;
   memo.resolver = resolver;
   try {
-    await mkdir(CACHE_DIR, { recursive: true });
-    await writeFile(CACHE_FILE, JSON.stringify(sheet));
+    await mkdir(cacheDir(), { recursive: true });
+    await writeFile(cacheFile(), JSON.stringify(sheet));
   } catch {
     /* best-effort: persistence failure just means we may refetch next run */
   }
