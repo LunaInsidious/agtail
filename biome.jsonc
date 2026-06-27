@@ -1,0 +1,32 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.1/schema.json",
+  // Biome is used here as the FORMATTER (all JS/TS/CSS/JSON) and the CSS LINTER.
+  // JS/TS linting is owned by oxlint (see .oxlintrc.json); the `lint` script only
+  // points Biome's linter at src/web/styles, so the JS rules below never fire.
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    // Test fixtures are sample real-world transcripts/data — keep them byte-stable.
+    "includes": ["**", "!**/test/fixtures*/**"]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 120
+  },
+  "javascript": {
+    "formatter": { "quoteStyle": "double", "trailingCommas": "all", "semicolons": "always" }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "style": {
+        // Off by design: flags intentional nested-context overrides (e.g.
+        // `.filterpop .disc .lbl` then a plainer `.lbl`); reordering selectors by
+        // specificity would hurt readability without fixing a real cascade bug.
+        "noDescendingSpecificity": "off"
+      }
+    }
+  }
+}

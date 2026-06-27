@@ -21,6 +21,11 @@
     "dev:web": "vite",
     "dev:cli": "tsx src/cli/index.ts",
     "typecheck": "tsc --noEmit",
+    "lint": "oxlint && biome lint src/web/styles",
+    "lint:fix": "oxlint --fix && biome lint --write src/web/styles",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test",
     "test": "vitest run",
     "test:e2e": "playwright test"
   },
@@ -29,11 +34,13 @@
     "react-virtuoso": "^4.18.7"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.1",
     "@playwright/test": "^1.61.1",
     "@types/node": "^22.10.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "oxlint": "^1.71.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^9.0.1",
