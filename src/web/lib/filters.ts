@@ -47,9 +47,9 @@ export function defaultSavedName(f: Filters): string {
 // Avoid duplicate saved-search names by appending " (2)", " (3)", …
 export function uniqueName(base: string, taken: string[]): string {
   const set = new Set(taken);
-  if (!set.has(base)) return base;
-  for (let n = 2; ; n++) {
+  const nth = (n: number): string => {
     const candidate = `${base} (${n})`;
-    if (!set.has(candidate)) return candidate;
-  }
+    return set.has(candidate) ? nth(n + 1) : candidate;
+  };
+  return set.has(base) ? nth(2) : base;
 }

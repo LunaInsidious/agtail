@@ -1,7 +1,10 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["react", "typescript", "unicorn", "oxc"],
-  "jsPlugins": ["eslint-plugin-sonarjs"],
+  // sonarjs gives cognitive-complexity; oxlint-plugin-eslint exposes ESLint's
+  // built-in rules (aliased to `eslint-js` since `eslint` is native) so we can
+  // use no-restricted-syntax to ban `let`.
+  "jsPlugins": ["eslint-plugin-sonarjs", { "name": "eslint-js", "specifier": "oxlint-plugin-eslint" }],
   "categories": { "correctness": "error" },
   "rules": {
     "max-lines": ["error", { "max": 400, "skipBlankLines": true, "skipComments": true }],
@@ -15,7 +18,14 @@
     "prefer-const": "error",
     "no-var": "error",
     "no-param-reassign": "error",
-    "eqeqeq": ["error", "smart"]
+    "eqeqeq": ["error", "smart"],
+    "eslint-js/no-restricted-syntax": [
+      "error",
+      {
+        "selector": "VariableDeclaration[kind=let]",
+        "message": "`let` is banned (const-first). Extract a value-returning function, or use a const accumulator object (mutating its fields is fine)."
+      }
+    ]
   },
   "overrides": [
     {

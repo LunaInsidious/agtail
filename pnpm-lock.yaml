@@ -42,6 +42,9 @@ importers:
       oxlint:
         specifier: 1.71.0
         version: 1.71.0
+      oxlint-plugin-eslint:
+        specifier: 1.71.0
+        version: 1.71.0
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -1922,6 +1925,10 @@ packages:
   optionator@0.9.4:
     resolution: {integrity: sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g==}
     engines: {node: '>= 0.8.0'}
+
+  oxlint-plugin-eslint@1.71.0:
+    resolution: {integrity: sha512-FDDai94pqkKlc2gr9uXgl9UG2BfhryPWqY0KGw4VMUsayF/kNEcDUYEGnGVosL/S5yWyYhRpOmBrun5FQG9law==}
+    engines: {node: ^20.19.0 || >=22.12.0}
 
   oxlint@1.71.0:
     resolution: {integrity: sha512-U1m1X+C0vDj7DC1e13IoZULzEcPczE7UOMTs8VlZGHUEIUaSTZKo5qkPsQEfzpgnQ29Pea/w3Xntk62UCecxZw==}
@@ -4165,6 +4172,8 @@ snapshots:
       prelude-ls: 1.2.1
       type-check: 0.4.0
       word-wrap: 1.2.5
+
+  oxlint-plugin-eslint@1.71.0: {}
 
   oxlint@1.71.0:
     optionalDependencies:
