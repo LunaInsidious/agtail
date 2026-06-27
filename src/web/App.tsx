@@ -37,6 +37,17 @@ const PROGRAMMATIC_TIP =
 
 const homeShort = (p: string) => p.replace(/^\/Users\/[^/]+/, "~").replace(/^\/home\/[^/]+/, "~");
 
+// Recent text searches: a most-recently-used list persisted in localStorage and
+// offered as suggestions on the search box. Recorded on blur/Enter (not per
+// keystroke), so typing "hoge" never leaves "ho"/"hog" behind; distinct queries
+// (incl. "ho" and "hoge") are kept as separate entries.
+const RECENT_KEY = "agtail.recent";
+const RECENT_CAP = 25;
+function loadRecent(): string[] {
+  const raw = localStorage.getItem(RECENT_KEY);
+  return raw ? (JSON.parse(raw) as string[]) : [];
+}
+
 // Cheap signature to detect that a cached session changed (a live one grew):
 // event count + last-event time. Append-only logs make this reliable enough to
 // avoid a needless re-render when the revalidated copy is identical.
@@ -156,6 +167,29 @@ export function App() {
   const [showFilters, setShowFilters] = useState(false);
   const [limit, setLimit] = useState<number>(() => readHistory().limit);
   const set = (p: Partial<Filters>) => setFilters((f) => ({ ...f, ...p }));
+
+  // Recent search suggestions (text only). Recorded on blur/Enter.
+  const [recent, setRecent] = useState<string[]>(loadRecent);
+  const [recentOpen, setRecentOpen] = useState(false);
+  const pushRecent = (q: string) => {
+    const v = q.trim();
+    if (!v) return;
+    setRecent((r) => {
+      const next = [v, ...r.filter((x) => x !== v)].slice(0, RECENT_CAP);
+      localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+  const clearRecent = () => {
+    localStorage.removeItem(RECENT_KEY);
+    setRecent([]);
+    setRecentOpen(false);
+  };
+  const selectRecent = (v: string) => {
+    set({ q: v }); // live-search effect re-runs for the picked query
+    pushRecent(v);
+    setRecentOpen(false);
+  };
 
   // History (back/forward + reload) carries filters, limit AND the open session.
   // The effects live after `open` is defined (below). histRef holds the snapshot
@@ -458,6 +492,8 @@ export function App() {
   // Enter / Search button: run immediately (skip the debounce).
   function runSearch(e?: React.FormEvent) {
     e?.preventDefault();
+    pushRecent(filters.q);
+    setRecentOpen(false);
     if (!anyFilter) return;
     setSearching(true);
     const seq = ++searchSeq.current;
@@ -466,6 +502,10 @@ export function App() {
       .finally(() => { if (searchSeq.current === seq) setSearching(false); });
   }
 
+  // Recent searches matching the current text (substring), newest first.
+  const needleLc = filters.q.trim().toLowerCase();
+  const recentMatches = recent.filter((r) => r !== filters.q && r.toLowerCase().includes(needleLc));
+
   return (
     <div className="app">
       <header>
@@ -473,12 +513,52 @@ export function App() {
           <b>≋</b> agtail
         </span>
         <form className="search" onSubmit={runSearch}>
-          <input
-            type="search"
-            placeholder="Search across all sessions…"
-            value={filters.q}
-            onChange={(e) => set({ q: e.target.value })}
-          />
+          <div className="searchbox">
+            <input
+              type="search"
+              placeholder="Search across all sessions…"
+              value={filters.q}
+              onChange={(e) => {
+                set({ q: e.target.value });
+                setRecentOpen(true);
+              }}
+              onFocus={() => setRecentOpen(true)}
+              onBlur={() => {
+                pushRecent(filters.q);
+                setRecentOpen(false);
+              }}
+            />
+            {recentOpen && recentMatches.length > 0 && (
+              <div className="recent">
+                {recentMatches.map((r) => (
+                  // mousedown (not click) + preventDefault so the input doesn't
+                  // blur-and-close before the selection registers.
+                  <button
+                    type="button"
+                    key={r}
+                    className="recentitem"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      selectRecent(r);
+                    }}
+                  >
+                    <span className="ric">🕘</span>
+                    {r}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="recentclear"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    clearRecent();
+                  }}
+                >
+                  Clear history
+                </button>
+              </div>
+            )}
+          </div>
           <button type="submit">Search</button>
         </form>
         <div className="filtermenu" ref={popRef}>
