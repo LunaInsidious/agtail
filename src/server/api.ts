@@ -89,8 +89,13 @@ export function createApiHandler(opts: ApiOptions = {}) {
           parseAutomated(q.get("automated")),
           q.getAll("model").filter(Boolean),
         );
-        const proj = q.get("project")?.toLowerCase();
-        sendJson(200, proj ? sessions.filter((m) => (m.cwd ?? "").toLowerCase().includes(proj)) : sessions);
+        const projs = q.getAll("project").filter(Boolean).map((p) => p.toLowerCase());
+        sendJson(
+          200,
+          projs.length
+            ? sessions.filter((m) => projs.some((p) => (m.cwd ?? "").toLowerCase().includes(p)))
+            : sessions,
+        );
         return true;
       }
       if (url.pathname === "/api/session") {
@@ -123,7 +128,7 @@ export function createApiHandler(opts: ApiOptions = {}) {
           agents: parseAgents(q.get("agent")),
           tools: q.getAll("tool").filter(Boolean),
           models: q.getAll("model").filter(Boolean),
-          cwd: q.get("cwd") ?? undefined,
+          cwds: q.getAll("cwd").filter(Boolean),
           since: q.get("since") ?? undefined,
           until: q.get("until") ?? undefined,
           kinds: (q.get("kind")?.split(",").filter(Boolean) as EventKind[]) || undefined,

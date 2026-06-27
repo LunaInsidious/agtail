@@ -63,7 +63,7 @@ async function cmdGrep(pattern: string | undefined, opts: any, global: GlobalOpt
     ignoreCase: !opts.caseSensitive,
     agents: parseAgents(opts.agent),
     tools: opts.tool?.length ? opts.tool : undefined,
-    cwd: opts.cwd,
+    cwds: opts.cwd ? [opts.cwd] : undefined,
     since: opts.since,
     until: opts.until,
     kinds: opts.kind ? (opts.kind.split(",") as EventKind[]) : undefined,

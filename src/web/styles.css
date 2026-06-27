@@ -43,7 +43,17 @@ header select { max-width: 200px; cursor: pointer; }
   position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; width: 300px;
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--rad); padding: 12px;
   display: flex; flex-direction: column; gap: 11px; box-shadow: 0 10px 28px rgba(0,0,0,.45);
+  max-height: calc(100vh - 80px); overflow-y: auto;
 }
+.filterpop .disc {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; background: none; border: none; padding: 0; cursor: pointer;
+}
+.filterpop .disc .lbl {
+  color: var(--muted); font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+}
+.filterpop .disc:hover .lbl { color: var(--text); }
+.filterpop .disc .chev { color: var(--muted); font-size: 10px; }
 .filterpop .frow { display: flex; flex-direction: column; gap: 5px; }
 .filterpop .frow > .lbl {
   color: var(--muted); font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
@@ -52,6 +62,10 @@ header select { max-width: 200px; cursor: pointer; }
   background: var(--panel2); border: 1px solid var(--border); color: var(--text);
   border-radius: var(--rad); padding: 5px 9px; font-family: var(--mono); font-size: 12px; width: 100%;
 }
+.checklist { display: flex; flex-direction: column; max-height: 168px; overflow-y: auto;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: var(--rad); padding: 4px 8px; }
+.checklist label { color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 2px 0; }
+.checklist label.on { color: var(--text); }
 .filterpop .dates { display: flex; gap: 6px; }
 .filterpop .dates input { flex: 1; }
 .filterpop .clear {

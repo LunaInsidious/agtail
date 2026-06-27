@@ -64,6 +64,15 @@ describe("session-level search", () => {
     expect(none.length).toBe(0);
   });
 
+  it("filters by cwd, matching a session that contains ANY of the given substrings", async () => {
+    const none = await searchSessionHits({ pattern: "", cwds: ["nope-not-a-path"], overrides });
+    expect(none.length).toBe(0);
+    // any-match: the bogus one is ignored as long as one substring matches.
+    const some = await searchSessionHits({ pattern: "", cwds: ["nope-not-a-path", "proj"], overrides });
+    expect(some.length).toBeGreaterThan(0);
+    expect(some.every((h) => (h.cwd ?? "").includes("proj"))).toBe(true);
+  });
+
   it("limit bounds the number of sessions returned", async () => {
     const all = await searchSessionHits({ pattern: "", overrides });
     expect(all.length).toBeGreaterThan(1);

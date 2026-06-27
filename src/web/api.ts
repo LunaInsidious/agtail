@@ -99,7 +99,7 @@ export interface Filters {
   agents: Agent[];
   tools: string[];
   models: string[];
-  cwd: string;
+  cwds: string[];
   since: string;
   until: string;
   kinds: EventKind[];
@@ -131,7 +131,7 @@ export async function apiSessions(f: Partial<Filters>): Promise<SessionMeta[]> {
     "/api/sessions" +
       qs({
         agent: f.agents?.join(","),
-        project: f.cwd,
+        project: f.cwds,
         model: f.models,
         archived: f.archived && f.archived !== "all" ? f.archived : undefined,
         automated: f.automated && f.automated !== "all" ? f.automated : undefined,
@@ -153,7 +153,7 @@ export async function apiSearch(f: Filters, limit: number): Promise<SessionHit[]
         agent: f.agents.join(","),
         tool: f.tools,
         model: f.models,
-        cwd: f.cwd,
+        cwd: f.cwds,
         since: f.since,
         until: f.until,
         kind: f.kinds.join(","),

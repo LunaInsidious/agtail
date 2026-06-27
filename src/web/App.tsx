@@ -64,12 +64,53 @@ const fmtTs = (ts?: string) => {
 };
 const pretty = (v: unknown) => (typeof v === "string" ? v : JSON.stringify(v, null, 2));
 
+// Collapsible checkbox list for an array filter (tools / models / projects):
+// click to toggle; selections also show as removable chips in the bar. The
+// header shows the selected count and long lists (>8) start collapsed to keep
+// the popover compact. Mounts with the popover, so options are already loaded.
+function CheckList({
+  label,
+  options,
+  selected,
+  onChange,
+}: {
+  label: string;
+  options: { value: string; label: string }[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [open, setOpen] = useState(() => options.length <= 8);
+  if (!options.length) return null;
+  const toggle = (v: string) => onChange(selected.includes(v) ? selected.filter((x) => x !== v) : [...selected, v]);
+  return (
+    <div className="frow">
+      <button type="button" className="disc" onClick={() => setOpen((o) => !o)}>
+        <span className="lbl">
+          {label}
+          {selected.length ? ` (${selected.length})` : ""}
+        </span>
+        <span className="chev">{open ? "▾" : "▸"}</span>
+      </button>
+      {open && (
+        <div className="checklist">
+          {options.map((o) => (
+            <label key={o.value} className={selected.includes(o.value) ? "on" : ""}>
+              <input type="checkbox" checked={selected.includes(o.value)} onChange={() => toggle(o.value)} />
+              {o.label}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const emptyFilters: Filters = {
   q: "",
   agents: [],
   tools: [],
   models: [],
-  cwd: "",
+  cwds: [],
   since: "",
   until: "",
   kinds: [],
@@ -163,7 +204,8 @@ export function App() {
     chips.push({ key: "tool:" + t, label: "⚙ " + t, onRemove: () => set({ tools: filters.tools.filter((x) => x !== t) }) });
   for (const m of filters.models)
     chips.push({ key: "model:" + m, label: "✦ " + m, onRemove: () => set({ models: filters.models.filter((x) => x !== m) }) });
-  if (filters.cwd) chips.push({ key: "cwd", label: "📁 " + homeShort(filters.cwd), onRemove: () => set({ cwd: "" }) });
+  for (const c of filters.cwds)
+    chips.push({ key: "cwd:" + c, label: "📁 " + homeShort(c), onRemove: () => set({ cwds: filters.cwds.filter((x) => x !== c) }) });
   if (filters.since) chips.push({ key: "since", label: "≥ " + filters.since, onRemove: () => set({ since: "" }) });
   if (filters.until) chips.push({ key: "until", label: "≤ " + filters.until, onRemove: () => set({ until: "" }) });
   if (filters.archived !== "all")
@@ -181,7 +223,7 @@ export function App() {
   if (filters.mask) chips.push({ key: "mask", label: "🔒 mask", onRemove: () => set({ mask: false }) });
 
   const clearAll = () =>
-    set({ agents: [], tools: [], models: [], cwd: "", since: "", until: "", archived: "all", automated: "all", mask: false });
+    set({ agents: [], tools: [], models: [], cwds: [], since: "", until: "", archived: "all", automated: "all", mask: false });
 
   // Hits are matching sessions. With a finite cap, reaching it means more
   // sessions matched than were returned; "All" (limit 0) never truncates.
@@ -210,21 +252,33 @@ export function App() {
     document.body.style.userSelect = "none";
   };
 
+  // A content search (query / tool / date / kind) produces snippets; attribute
+  // filters (agent / model / project / status / origin) narrow without one.
+  const hasSearch =
+    filters.q.trim() !== "" ||
+    filters.tools.length > 0 ||
+    filters.since !== "" ||
+    filters.until !== "" ||
+    filters.kinds.length > 0;
+  // ANY active filter shows the filtered "Results"; none → the browse "Sessions".
+  const anyFilter =
+    hasSearch ||
+    filters.agents.length > 0 ||
+    filters.models.length > 0 ||
+    filters.cwds.length > 0 ||
+    filters.archived !== "all" ||
+    filters.automated !== "all";
+
+  // Browse list: only meaningful with no filter active (results come from the
+  // search path). So fetch the full list unfiltered and skip while filtering.
   useEffect(() => {
+    if (anyFilter) return;
     const seq = ++sessionsSeq.current;
-    apiSessions({
-      agents: filters.agents,
-      cwd: filters.cwd,
-      models: filters.models,
-      archived: filters.archived,
-      automated: filters.automated,
-      // Ignore a stale resolution so an older fetch can't overwrite a newer one
-      // (which showed sessions that no longer match the active filters).
-    }).then((s) => {
+    apiSessions({}).then((s) => {
       if (sessionsSeq.current === seq) setSessions(s);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.agents.join(","), filters.cwd, filters.models.join(","), filters.archived, filters.automated]);
+  }, [anyFilter]);
 
   useEffect(() => {
     apiFacets().then(setFacets);
@@ -317,7 +371,7 @@ export function App() {
   // navigation), vs the query text which is debounced while typing.
   const openSig = cur ? `${cur.agent}:${cur.id}` : "";
   const chipSig = JSON.stringify([
-    filters.agents, filters.tools, filters.models, filters.cwd, filters.since,
+    filters.agents, filters.tools, filters.models, filters.cwds, filters.since,
     filters.until, filters.kinds, filters.mask, filters.archived, filters.automated, limit,
   ]);
 
@@ -364,20 +418,11 @@ export function App() {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
-  // A search is meaningful when there's a query or a search-specific filter.
-  // cwd/agents/archived/automated alone just filter the Sessions list.
-  const hasSearch =
-    filters.q.trim() !== "" ||
-    filters.tools.length > 0 ||
-    filters.since !== "" ||
-    filters.until !== "" ||
-    filters.kinds.length > 0;
-
   // Live search: re-run as filters change (debounced so typing isn't a request
   // per keystroke). Does NOT toggle the main `loading` — searching must not blank
   // the open session's timeline.
   useEffect(() => {
-    if (!hasSearch) {
+    if (!anyFilter) {
       searchSeq.current++; // invalidate any in-flight search
       setHits(null);
       setSearching(false);
@@ -395,11 +440,12 @@ export function App() {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    hasSearch,
+    anyFilter,
     filters.q,
+    filters.agents.join(","),
     filters.tools.join(","),
     filters.models.join(","),
-    filters.cwd,
+    filters.cwds.join(","),
     filters.since,
     filters.until,
     filters.kinds.join(","),
@@ -412,7 +458,7 @@ export function App() {
   // Enter / Search button: run immediately (skip the debounce).
   function runSearch(e?: React.FormEvent) {
     e?.preventDefault();
-    if (!hasSearch) return;
+    if (!anyFilter) return;
     setSearching(true);
     const seq = ++searchSeq.current;
     apiSearch(filters, limit)
@@ -445,48 +491,27 @@ export function App() {
           </button>
           {showFilters && (
             <div className="filterpop">
-              <div className="frow">
-                <span className="lbl">tool</span>
-                <select
-                  value={filters.tools[0] ?? ""}
-                  onChange={(e) => set({ tools: e.target.value ? [e.target.value] : [] })}
-                >
-                  <option value="">all</option>
-                  {facets.tools.some((t) => t.startsWith("mcp__")) && <option value="mcp__*">mcp__* (all MCP)</option>}
-                  {facets.tools.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {facets.models.length > 0 && (
-                <div className="frow">
-                  <span className="lbl">model</span>
-                  <select
-                    value={filters.models[0] ?? ""}
-                    onChange={(e) => set({ models: e.target.value ? [e.target.value] : [] })}
-                  >
-                    <option value="">all</option>
-                    {facets.models.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              <div className="frow">
-                <span className="lbl">project (cwd)</span>
-                <select value={filters.cwd} onChange={(e) => set({ cwd: e.target.value })}>
-                  <option value="">all</option>
-                  {facets.cwds.map((c) => (
-                    <option key={c} value={c}>
-                      {homeShort(c)}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <CheckList
+                label="tool"
+                options={[
+                  ...(facets.tools.some((t) => t.startsWith("mcp__")) ? [{ value: "mcp__*", label: "mcp__* (all MCP)" }] : []),
+                  ...facets.tools.map((t) => ({ value: t, label: t })),
+                ]}
+                selected={filters.tools}
+                onChange={(tools) => set({ tools })}
+              />
+              <CheckList
+                label="model"
+                options={facets.models.map((m) => ({ value: m, label: m }))}
+                selected={filters.models}
+                onChange={(models) => set({ models })}
+              />
+              <CheckList
+                label="project (cwd)"
+                options={facets.cwds.map((c) => ({ value: c, label: homeShort(c) }))}
+                selected={filters.cwds}
+                onChange={(cwds) => set({ cwds })}
+              />
               <div className="frow">
                 <span className="lbl">date range</span>
                 <div className="dates">
@@ -586,18 +611,19 @@ export function App() {
               tree; searching shows only matched sessions (matched child nested
               under matched parent, else standalone). */}
           <div className="listhead">
-            {hasSearch ? (
+            {anyFilter ? (
               <>Results {hits ? `(${hits.length}${truncated ? "+" : ""})` : ""}</>
             ) : (
               <>Sessions {sessions.length ? `(${sessions.length})` : ""}</>
             )}
             {searching && <span className="spinner" />}
           </div>
-          {hasSearch ? (
+          {anyFilter ? (
             <HitList
               hits={hits ?? []}
               truncated={truncated}
               searching={searching}
+              showMatch={hasSearch}
               seed={{ find: filters.q, tool: filters.tools[0] }}
               cur={cur}
               onOpen={open}
@@ -729,6 +755,7 @@ function HitRow({
   seed,
   onOpen,
   scrollTarget,
+  showMatch,
   child,
 }: {
   m: SessionHit;
@@ -736,6 +763,7 @@ function HitRow({
   seed: Seed;
   onOpen: (a: Agent, id: string, seed?: Seed) => void;
   scrollTarget: React.MutableRefObject<string | null>;
+  showMatch: boolean;
   child?: boolean;
 }) {
   const active = !!cur && cur.id === m.sessionId;
@@ -764,10 +792,14 @@ function HitRow({
         {m.isSubagent && m.agentName && <span className="agentname">{m.agentName}</span>}
         <span className="sid">{m.sessionId.slice(0, 8)}</span>
         <span>{fmtTs(m.ts)}</span>
-        <span className="matchn" title="matching events">{m.matchCount} match{m.matchCount === 1 ? "" : "es"}</span>
+        {showMatch && (
+          <span className="matchn" title="matching events">
+            {m.matchCount} match{m.matchCount === 1 ? "" : "es"}
+          </span>
+        )}
       </div>
       <div className="title">{m.title}</div>
-      <div className="snippet">{m.snippet}</div>
+      {showMatch && <div className="snippet">{m.snippet}</div>}
     </div>
   );
 }
@@ -776,6 +808,7 @@ const HitList = memo(function HitList({
   hits,
   truncated,
   searching,
+  showMatch,
   seed,
   cur,
   onOpen,
@@ -784,6 +817,7 @@ const HitList = memo(function HitList({
   hits: SessionHit[];
   truncated: boolean;
   searching: boolean;
+  showMatch: boolean;
   seed: Seed;
   cur: Session | null;
   onOpen: (a: Agent, id: string, seed?: Seed) => void;
@@ -809,7 +843,7 @@ const HitList = memo(function HitList({
       childrenOf.set(m.parentId, arr);
     }
   const present = new Set(hits.map((m) => m.sessionId));
-  const rowProps = { cur, seed, onOpen, scrollTarget };
+  const rowProps = { cur, seed, onOpen, scrollTarget, showMatch };
   return (
     <>
       {searching && <div className="searchbar" />}

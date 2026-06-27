@@ -15,8 +15,8 @@ export interface SearchFilters {
   agents?: Agent[];
   /** Tool name globs, e.g. "Bash", "Write", "mcp__*". Restricts to tool_use. */
   tools?: string[];
-  /** Substring match against session cwd. */
-  cwd?: string;
+  /** Substring match against session cwd; matches if it contains ANY of these. */
+  cwds?: string[];
   /** Restrict to sessions that used any of these models (membership). */
   models?: string[];
   /** ISO/date lower & upper bounds on event timestamp (inclusive). */
@@ -90,7 +90,7 @@ interface MatchCtx {
   kinds: Set<EventKind> | null;
   since?: string;
   until?: string;
-  cwdNeedle?: string;
+  cwdNeedles?: string[];
   doMask: boolean;
 }
 
@@ -103,7 +103,7 @@ function buildCtx(f: SearchFilters): MatchCtx {
     since: f.since,
     // A date-only `until` should include the whole day, not stop at 00:00:00.
     until: f.until && /^\d{4}-\d{2}-\d{2}$/.test(f.until) ? f.until + "T23:59:59.999Z" : f.until,
-    cwdNeedle: f.cwd?.toLowerCase(),
+    cwdNeedles: f.cwds && f.cwds.length ? f.cwds.map((c) => c.toLowerCase()) : undefined,
     doMask: Boolean(f.mask),
   };
 }
@@ -127,8 +127,8 @@ function matchHay(e: Event, ctx: MatchCtx): string | null {
   return hay;
 }
 
-const cwdMatches = (cwd: string | undefined, needle?: string) =>
-  !needle || (cwd ?? "").toLowerCase().includes(needle);
+const cwdMatches = (cwd: string | undefined, needles?: string[]) =>
+  !needles || !needles.length || needles.some((n) => (cwd ?? "").toLowerCase().includes(n));
 
 /** Stream event-level matches across the selected agents' sessions. */
 export async function* searchSessions(f: SearchFilters): AsyncGenerator<Match> {
@@ -140,7 +140,7 @@ export async function* searchSessions(f: SearchFilters): AsyncGenerator<Match> {
     for (const meta of metas) {
       if (!matchArchived(meta, f.archived) || !matchAutomated(meta, f.automated)) continue;
       if (!matchModels(meta, f.models)) continue;
-      if (!cwdMatches(meta.cwd, ctx.cwdNeedle)) continue;
+      if (!cwdMatches(meta.cwd, ctx.cwdNeedles)) continue;
       let session: Session;
       try {
         session = await adapter.readSession(meta.path);
@@ -185,7 +185,7 @@ export async function searchSessionHits(f: SearchFilters): Promise<SessionHit[]>
     for (const meta of metas) {
       if (!matchArchived(meta, f.archived) || !matchAutomated(meta, f.automated)) continue;
       if (!matchModels(meta, f.models)) continue;
-      if (!cwdMatches(meta.cwd, ctx.cwdNeedle)) continue;
+      if (!cwdMatches(meta.cwd, ctx.cwdNeedles)) continue;
       let session: Session;
       try {
         session = await adapter.readSession(meta.path);
