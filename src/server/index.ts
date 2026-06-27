@@ -14,9 +14,12 @@ export interface ServeOptions {
 
 /** `start` plus its `levels` nearest ancestor directories (nearest first). */
 function ancestors(start: string, levels: number): string[] {
-  const dirs = [start];
-  for (const _ of Array.from({ length: levels })) dirs.push(dirname(dirs.at(-1)!));
-  return dirs;
+  const state = { last: start, dirs: [start] };
+  for (const _ of Array.from({ length: levels })) {
+    state.last = dirname(state.last);
+    state.dirs.push(state.last);
+  }
+  return state.dirs;
 }
 
 /** Locate the built SPA (dist-web) by walking up from this module. */

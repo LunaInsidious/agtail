@@ -126,8 +126,9 @@ function buildCtx(f: SearchFilters): MatchCtx {
  *  otherwise null. */
 function matchHay(e: Event, ctx: MatchCtx): string | null {
   if (ctx.toolRes) {
-    if (e.kind !== "tool_use" || !e.tool) return null;
-    if (!ctx.toolRes.some((r) => r.test(e.tool!))) return null;
+    const tool = e.tool;
+    if (e.kind !== "tool_use" || !tool) return null;
+    if (!ctx.toolRes.some((r) => r.test(tool))) return null;
   }
   if (ctx.kinds && !ctx.kinds.has(e.kind)) return null;
   if (!inRange(e.ts, ctx.since, ctx.until)) return null;
@@ -212,9 +213,10 @@ export async function searchSessionHits(f: SearchFilters): Promise<SessionHit[]>
         const hay = matchHay(e, ctx);
         return hay === null ? [] : [hay || (e.tool ?? "")];
       });
+      const firstHay = hays[0];
+      if (firstHay === undefined) continue;
       const matchCount = hays.length;
-      if (matchCount === 0) continue;
-      const firstSnippet = snippet(hays[0]!, ctx.re, ctx.doMask);
+      const firstSnippet = snippet(firstHay, ctx.re, ctx.doMask);
       out.push({
         agent: session.agent,
         sessionId: session.id,

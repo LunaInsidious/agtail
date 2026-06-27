@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Agent, Event, Session } from "../lib/api.js";
 import { tag } from "../lib/filters.js";
-import { originLabel, PROGRAMMATIC_TIP, pretty, type Seed } from "../lib/util.js";
+import { isRecord, originLabel, PROGRAMMATIC_TIP, pretty, type Seed } from "../lib/util.js";
 
 // Searchable text for one event (in-session find).
 function eventText(e: Event): string {
@@ -92,7 +92,8 @@ export const Timeline = memo(function Timeline({
   useEffect(() => {
     if (!showTools) return;
     const onDown = (e: MouseEvent) => {
-      if (toolsRef.current && !toolsRef.current.contains(e.target as Node)) setShowTools(false);
+      const t = e.target instanceof Node ? e.target : null;
+      if (toolsRef.current && !toolsRef.current.contains(t)) setShowTools(false);
     };
     window.addEventListener("mousedown", onDown);
     return () => window.removeEventListener("mousedown", onDown);
@@ -135,7 +136,7 @@ export const Timeline = memo(function Timeline({
       return n;
     });
 
-  const matchesAt = (i: number) => !!needle && searchText[i]!.includes(needle);
+  const matchesAt = (i: number) => !!needle && (searchText[i] ?? "").includes(needle);
   const isHidden = (e: Event, i: number) => {
     if (e.kind === "thinking" && !showThinking) return true;
     if (e.kind === "hook" && !showHooks) return true;
@@ -164,7 +165,7 @@ export const Timeline = memo(function Timeline({
     [visibleIdx, needle, searchText],
   );
   const cur = matchPositions.length ? Math.min(activeMatch, matchPositions.length - 1) : 0;
-  const activePos = needle && matchPositions.length ? matchPositions[cur]! : -1;
+  const activePos = needle && matchPositions.length ? (matchPositions[cur] ?? -1) : -1;
   const goMatch = (delta: number) =>
     matchPositions.length && setActiveMatch((a) => (a + delta + matchPositions.length) % matchPositions.length);
 
@@ -313,12 +314,15 @@ export const Timeline = memo(function Timeline({
         data={visibleIdx}
         increaseViewportBy={400}
         computeItemKey={(_, oi) => oi}
-        itemContent={(index, oi) => (
-          <div className={"evrow" + (index === activePos ? " active" : "")}>
-            {/* Highlight only matching rows so non-matching rows skip re-render. */}
-            <EventRow e={session.events[oi]!} highlight={matchesAt(oi) ? needle : undefined} />
-          </div>
-        )}
+        itemContent={(index, oi) => {
+          const ev = session.events[oi];
+          return (
+            <div className={"evrow" + (index === activePos ? " active" : "")}>
+              {/* Highlight only matching rows so non-matching rows skip re-render. */}
+              {ev && <EventRow e={ev} highlight={matchesAt(oi) ? needle : undefined} />}
+            </div>
+          );
+        }}
       />
     </>
   );
@@ -531,8 +535,8 @@ function Collapsible({
 
 // Mirror of core/format.ts summarizeInput for the browser.
 function summarizeInput(tool: string | undefined, input: unknown): string {
-  if (input == null || typeof input !== "object") return String(input ?? "");
-  const i = input as Record<string, unknown>;
+  if (!isRecord(input)) return String(input ?? "");
+  const i = input;
   const s = (v: unknown) => (typeof v === "string" ? v : v == null ? "" : String(v));
   switch (tool) {
     case "Bash": {

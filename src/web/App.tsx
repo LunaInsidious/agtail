@@ -109,7 +109,7 @@ export function App() {
   useEffect(() => {
     if (!showFilters && !showSaved) return;
     const onDown = (e: MouseEvent) => {
-      const t = e.target as Node;
+      const t = e.target instanceof Node ? e.target : null;
       if (popRef.current && !popRef.current.contains(t)) setShowFilters(false);
       if (savedRef.current && !savedRef.current.contains(t)) setShowSaved(false);
     };

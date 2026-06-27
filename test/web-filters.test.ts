@@ -36,7 +36,7 @@ describe("filterChips", () => {
 
 describe("savedChips", () => {
   it("prepends the query chip", () => {
-    expect(savedChips(f({ q: "blogsync", models: ["opus"] }))[0]!.label).toBe('🔎 "blogsync"');
+    expect(savedChips(f({ q: "blogsync", models: ["opus"] }))[0]?.label).toBe('🔎 "blogsync"');
   });
 });
 

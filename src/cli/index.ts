@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { homedir } from "node:os";
-import type { Agent, ArchivedFilter, ProgrammaticFilter, EventKind, TriFilter } from "../core/types.js";
-import { AGENTS } from "../core/types.js";
+import type { Agent, ArchivedFilter, ProgrammaticFilter, TriFilter } from "../core/types.js";
+import { AGENTS, isAgent, isEventKind } from "../core/types.js";
 import type { RootOverrides } from "../core/adapters/types.js";
 import { findAllSessions, resolveSession } from "../core/adapters/index.js";
 import { search, searchSessions } from "../core/search.js";
@@ -20,6 +20,38 @@ interface GlobalOpts {
   mask?: boolean;
   archived?: string; // "all" (default) | "only" | "none"
   programmatic?: string; // "all" (default) | "only" | "none"
+}
+
+// Per-command flag shapes. commander hands `.action` a loosely-typed options
+// object; these interfaces describe just the flags each command reads.
+interface GrepOpts {
+  regex?: boolean;
+  caseSensitive?: boolean;
+  agent?: string;
+  tool?: string[];
+  cwd?: string;
+  since?: string;
+  until?: string;
+  kind?: string;
+  limit?: string;
+  json?: boolean;
+}
+interface ListOpts {
+  agent?: string;
+  project?: string;
+  since?: string;
+  until?: string;
+}
+interface ShowOpts {
+  agent?: string;
+  tools?: boolean;
+}
+interface StatsOpts {
+  agent?: string;
+  project?: string;
+}
+interface ServeOpts {
+  port?: string;
 }
 
 // Included by default; only|none narrows. Shared by --archived / --programmatic.
@@ -47,19 +79,19 @@ function parseAgents(v?: string): Agent[] | undefined {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  const bad = items.filter((i) => !AGENTS.includes(i as Agent));
+  const bad = items.filter((i) => !isAgent(i));
   if (bad.length) {
     console.error(`unknown agent(s): ${bad.join(", ")}. valid: ${AGENTS.join(", ")}`);
     process.exit(2);
   }
-  return items as Agent[];
+  return items.filter(isAgent);
 }
 
 const collect = (v: string, prev: string[]) => prev.concat([v]);
 const agentTag = (a: Agent) => (a === "claude-code" ? "claude" : a);
 
 // --- grep (primary) ----------------------------------------------------------
-async function cmdGrep(pattern: string | undefined, opts: any, global: GlobalOpts) {
+async function cmdGrep(pattern: string | undefined, opts: GrepOpts, global: GlobalOpts) {
   const filters = {
     pattern,
     regex: Boolean(opts.regex),
@@ -69,7 +101,7 @@ async function cmdGrep(pattern: string | undefined, opts: any, global: GlobalOpt
     cwds: opts.cwd ? [opts.cwd] : undefined,
     since: opts.since,
     until: opts.until,
-    kinds: opts.kind ? (opts.kind.split(",") as EventKind[]) : undefined,
+    kinds: opts.kind ? opts.kind.split(",").filter(isEventKind) : undefined,
     archived: archivedFilter(global),
     programmatic: programmaticFilter(global),
     mask: global.mask,
@@ -94,7 +126,7 @@ async function cmdGrep(pattern: string | undefined, opts: any, global: GlobalOpt
 }
 
 // --- list --------------------------------------------------------------------
-async function cmdList(opts: any, global: GlobalOpts) {
+async function cmdList(opts: ListOpts, global: GlobalOpts) {
   const all = await findAllSessions(
     parseAgents(opts.agent),
     overrides(global),
@@ -112,7 +144,9 @@ async function cmdList(opts: any, global: GlobalOpts) {
   const children = new Map<string, typeof sessions>();
   for (const m of sessions) {
     if (m.isSubagent && m.parentId) {
-      (children.get(m.parentId) ?? children.set(m.parentId, []).get(m.parentId)!).push(m);
+      const bucket = children.get(m.parentId) ?? [];
+      bucket.push(m);
+      children.set(m.parentId, bucket);
     }
   }
   const seenChild = new Set<string>();
@@ -149,7 +183,7 @@ async function cmdList(opts: any, global: GlobalOpts) {
 
 // --- show --------------------------------------------------------------------
 // eslint-disable-next-line sonarjs/cognitive-complexity -- top-level CLI command: resolves a session and prints it; one branch per output flag.
-async function cmdShow(id: string, opts: any, global: GlobalOpts) {
+async function cmdShow(id: string, opts: ShowOpts, global: GlobalOpts) {
   const sess = await resolveSession(id, parseAgents(opts.agent), overrides(global));
   if (!sess) return console.log("no matching session:", id);
   const doMask = Boolean(global.mask);
@@ -189,7 +223,7 @@ async function cmdShow(id: string, opts: any, global: GlobalOpts) {
       // Inside a sidechain, a "user" message is the parent agent, not the human.
       const who = isHumanMessage(e) ? "cyan" : e.sidechain && e.role === "user" ? "violet" : "rst";
       const body = (doMask ? maskText(e.text ?? "", true) : (e.text ?? "")).trim().replace(/\n/g, "\n           ");
-      console.log(`${ts} ${sc}${color(displayRole(e), who as any)}: ${body.slice(0, 1000)}${usageBadge(e)}`);
+      console.log(`${ts} ${sc}${color(displayRole(e), who)}: ${body.slice(0, 1000)}${usageBadge(e)}`);
     } else if (e.kind === "thinking") {
       console.log(
         `${ts} ${sc}${color("thinking", "violet")} ${color((e.text ?? "").slice(0, 120).replace(/\n/g, " "), "dim")}`,
@@ -207,7 +241,7 @@ async function cmdShow(id: string, opts: any, global: GlobalOpts) {
 }
 
 // --- stats -------------------------------------------------------------------
-async function cmdStats(id: string | undefined, opts: any, global: GlobalOpts) {
+async function cmdStats(id: string | undefined, opts: StatsOpts, global: GlobalOpts) {
   const agents = parseAgents(opts.agent);
   const ov = overrides(global);
   const sessions = id
@@ -250,7 +284,7 @@ async function cmdStats(id: string | undefined, opts: any, global: GlobalOpts) {
 }
 
 // --- serve -------------------------------------------------------------------
-async function cmdServe(opts: any, global: GlobalOpts) {
+async function cmdServe(opts: ServeOpts, global: GlobalOpts) {
   const { startServer } = await import("../server/index.js");
   await startServer({ port: Number(opts.port), overrides: overrides(global), mask: global.mask });
 }

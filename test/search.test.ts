@@ -53,8 +53,8 @@ describe("session-level search", () => {
     });
     const sub = hits.find((h) => h.isSubagent);
     expect(sub).toBeDefined();
-    expect(sub!.parentId).toBe("parent-1");
-    expect(sub!.agentName).toBe("Explore");
+    expect(sub?.parentId).toBe("parent-1");
+    expect(sub?.agentName).toBe("Explore");
     // the matched parent is present too, so the UI nests the child under it
     expect(hits.some((h) => !h.isSubagent && h.sessionId === "parent-1")).toBe(true);
   });

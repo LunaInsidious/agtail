@@ -2,6 +2,7 @@
 // normalized model, so they work the same for every agent.
 
 import type { Event, EventKind } from "./types.js";
+import { obj } from "./utils.js";
 
 const CONTENT_KINDS = new Set<EventKind>(["text", "tool_use", "thinking"]);
 
@@ -32,7 +33,7 @@ export function isHumanMessage(e: Pick<Event, "role" | "sidechain">): boolean {
 /** One-line summary of a tool_use input, keyed by common tool names. */
 export function summarizeInput(tool: string | undefined, input: unknown): string {
   if (input == null || typeof input !== "object") return String(input ?? "");
-  const i = input as Record<string, unknown>;
+  const i = obj(input);
   const s = (v: unknown) => (typeof v === "string" ? v : v == null ? "" : String(v));
   switch (tool) {
     case "Bash": {

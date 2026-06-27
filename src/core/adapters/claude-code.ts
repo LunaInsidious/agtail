@@ -281,7 +281,7 @@ function titleFromUser(msg: Record<string, unknown>): string | undefined {
   const t = textFromContent(msg.content).trim();
   // A slash-command invocation (e.g. "/stickers") titles by the command name.
   const cmd = t.match(/<command-name>([^<]+)<\/command-name>/);
-  if (cmd) return cmd[1]!.trim();
+  if (cmd?.[1] != null) return cmd[1].trim();
   if (t && !t.startsWith("[") && !t.startsWith("<local-command-caveat>") && !t.includes("tool_result")) {
     return firstLine(t);
   }
@@ -352,8 +352,8 @@ async function readSession(path: string): Promise<Session> {
   const subTitle = sub?.description || undefined;
   // No human prompt but real content (e.g. a resumed/forked session): fall back
   // to the first message rather than an opaque "(no prompt)".
-  const fallbackTitle = events.find((e) => e.kind === "text" && e.text?.trim());
-  const title = meta.title ?? (fallbackTitle ? firstLine(fallbackTitle.text!.trim()) : undefined);
+  const fallbackText = events.find((e) => e.kind === "text" && e.text?.trim())?.text?.trim();
+  const title = meta.title ?? (fallbackText ? firstLine(fallbackText) : undefined);
 
   return {
     agent: "claude-code",

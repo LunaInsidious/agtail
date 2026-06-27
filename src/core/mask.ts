@@ -27,14 +27,14 @@ export function mask(text: string, enabled = true): string {
 }
 
 /** Deep-mask strings inside an arbitrary JSON-like value. */
-export function maskValue<T>(value: T, enabled = true): T {
+export function maskValue(value: unknown, enabled = true): unknown {
   if (!enabled) return value;
-  if (typeof value === "string") return mask(value, true) as unknown as T;
-  if (Array.isArray(value)) return value.map((v) => maskValue(v, true)) as unknown as T;
+  if (typeof value === "string") return mask(value, true);
+  if (Array.isArray(value)) return value.map((v) => maskValue(v, true));
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) out[k] = maskValue(v, true);
-    return out as T;
+    return out;
   }
   return value;
 }

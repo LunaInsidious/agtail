@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mask, maskValue } from "../src/core/mask.js";
+import { isRecord } from "../src/core/utils.js";
 
 describe("mask", () => {
   it("redacts known token shapes", () => {
@@ -13,8 +14,10 @@ describe("mask", () => {
     expect(mask("just a normal sentence")).toBe("just a normal sentence");
   });
   it("deep-masks nested objects", () => {
-    const out = maskValue({ a: "AKIA" + "1234567890123456", b: ["plain"] }) as any;
+    const out = maskValue({ a: "AKIA" + "1234567890123456", b: ["plain"] });
+    expect(isRecord(out)).toBe(true);
+    if (!isRecord(out)) return;
     expect(out.a).toContain("<redacted>");
-    expect(out.b[0]).toBe("plain");
+    expect(Array.isArray(out.b) ? out.b[0] : undefined).toBe("plain");
   });
 });

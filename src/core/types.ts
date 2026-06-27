@@ -6,6 +6,12 @@ export type Agent = "claude-code" | "codex";
 
 export const AGENTS: Agent[] = ["claude-code", "codex"];
 
+/** Type guard for {@link Agent}, so a parsed string list narrows to Agent[]
+ *  via `.filter(isAgent)` without a cast. */
+export function isAgent(v: unknown): v is Agent {
+  return v === "claude-code" || v === "codex";
+}
+
 /** A tri-state filter over a boolean session attribute: include all, only the
  *  ones with it, or exclude them. Default everywhere is "all". */
 export type TriFilter = "all" | "only" | "none";
@@ -33,6 +39,23 @@ export interface Usage {
 }
 
 export type EventKind = "text" | "thinking" | "tool_use" | "tool_result" | "summary" | "system" | "hook" | "unknown";
+
+const EVENT_KINDS: ReadonlySet<string> = new Set([
+  "text",
+  "thinking",
+  "tool_use",
+  "tool_result",
+  "summary",
+  "system",
+  "hook",
+  "unknown",
+]);
+
+/** Type guard for {@link EventKind}, so a parsed comma list narrows to
+ *  EventKind[] via `.filter(isEventKind)` without a cast. */
+export function isEventKind(v: unknown): v is EventKind {
+  return typeof v === "string" && EVENT_KINDS.has(v);
+}
 
 /** One normalized timeline event. tool_result is merged into its tool_use. */
 export interface Event {

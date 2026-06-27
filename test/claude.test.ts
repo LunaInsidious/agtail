@@ -26,7 +26,7 @@ describe("claude-code adapter", () => {
     const sess = await claudeCodeAdapter().readSession(fixture);
     const thinking = sess.events.filter((e) => e.kind === "thinking");
     expect(thinking.length).toBe(1);
-    expect(thinking[0]!.text).toBe("Let me search the codebase.");
+    expect(thinking[0]?.text).toBe("Let me search the codebase.");
   });
 
   it("collects distinct models in first-seen order when the model is switched mid-session", async () => {

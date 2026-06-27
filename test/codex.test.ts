@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fileURLToPath } from "node:url";
 import { codexAdapter } from "../src/core/adapters/codex.js";
+import { obj } from "../src/core/utils.js";
 
 const fixture = fileURLToPath(new URL("./fixtures/rollout-codex-test.jsonl", import.meta.url));
 const forkFixture = fileURLToPath(new URL("./fixtures/rollout-codex-fork.jsonl", import.meta.url));
@@ -26,10 +27,11 @@ describe("codex adapter", () => {
     const sess = await codexAdapter().readSession(fixture);
     const exec = sess.events.find((e) => e.kind === "tool_use" && e.tool === "exec");
     expect(exec).toBeDefined();
-    expect((exec!.input as any).command).toBe("npm run build");
-    expect((exec!.input as any).cwd).toBe("/Users/testuser/proj");
-    expect(exec!.result?.isError).toBe(false);
-    expect(exec!.result?.text).toContain("build ok");
+    const input = obj(exec?.input);
+    expect(input.command).toBe("npm run build");
+    expect(input.cwd).toBe("/Users/testuser/proj");
+    expect(exec?.result?.isError).toBe(false);
+    expect(exec?.result?.text).toContain("build ok");
   });
 
   it("attaches token usage to the assistant turn (cached excluded from input)", async () => {

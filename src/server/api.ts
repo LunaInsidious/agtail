@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { Agent, ArchivedFilter, ProgrammaticFilter, EventKind, Session } from "../core/types.js";
-import { AGENTS } from "../core/types.js";
+import type { Agent, ArchivedFilter, ProgrammaticFilter, Session } from "../core/types.js";
+import { isAgent, isEventKind } from "../core/types.js";
 import type { RootOverrides } from "../core/adapters/types.js";
 import { findAllSessions, resolveSession, selectAdapters } from "../core/adapters/index.js";
 import { searchSessionHits } from "../core/search.js";
@@ -19,8 +19,8 @@ function parseAgents(v: string | null): Agent[] | undefined {
   const items = v
     .split(",")
     .map((s) => s.trim())
-    .filter((s) => AGENTS.includes(s as Agent));
-  return items.length ? (items as Agent[]) : undefined;
+    .filter(isAgent);
+  return items.length ? items : undefined;
 }
 
 function parseArchived(v: string | null): ArchivedFilter {
@@ -34,13 +34,11 @@ function parseProgrammatic(v: string | null): ProgrammaticFilter {
 /** Memoize a zero-arg factory: the first call runs it, later calls reuse the
  *  same result (so a cached promise is computed exactly once). */
 function once<T>(factory: () => T): () => T {
-  const cache: { value?: T; set: boolean } = { set: false };
+  const cache: { box?: { value: T } } = {};
   return () => {
-    if (!cache.set) {
-      cache.value = factory();
-      cache.set = true;
-    }
-    return cache.value!;
+    const box = cache.box ?? { value: factory() };
+    cache.box = box;
+    return box.value;
   };
 }
 
@@ -149,7 +147,7 @@ export function createApiHandler(opts: ApiOptions = {}) {
           cwds: q.getAll("cwd").filter(Boolean),
           since: q.get("since") ?? undefined,
           until: q.get("until") ?? undefined,
-          kinds: (q.get("kind")?.split(",").filter(Boolean) as EventKind[]) || undefined,
+          kinds: q.get("kind")?.split(",").filter(isEventKind) || undefined,
           archived: parseArchived(q.get("archived")),
           programmatic: parseProgrammatic(q.get("programmatic")),
           mask: q.get("mask") === "1" || Boolean(opts.mask),

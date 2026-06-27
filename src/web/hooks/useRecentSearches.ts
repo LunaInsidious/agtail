@@ -55,8 +55,11 @@ export function useRecentSearches(query: string, applyQuery: (q: string) => void
       e.preventDefault();
       setActiveIdx((i) => Math.max(i - 1, -1));
     } else if (e.key === "Enter" && activeIdx >= 0) {
-      e.preventDefault(); // pick the highlight instead of submitting the form
-      selectRecent(recentMatches[activeIdx]!);
+      const picked = recentMatches[activeIdx];
+      if (picked !== undefined) {
+        e.preventDefault(); // pick the highlight instead of submitting the form
+        selectRecent(picked);
+      }
     }
   };
 

@@ -30,7 +30,9 @@ export const RECENT_CAP = 10000; // distinct queries retained in localStorage
 export const RECENT_SHOWN = 10; // suggestions rendered in the dropdown at once
 export function loadRecent(): string[] {
   const raw = localStorage.getItem(RECENT_KEY);
-  return raw ? (JSON.parse(raw) as string[]) : [];
+  if (!raw) return [];
+  const v: unknown = JSON.parse(raw);
+  return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
 }
 
 // Saved searches: a named, durable snapshot of the full filter set + limit, for
@@ -40,12 +42,18 @@ export type SavedSearch = { id: string; name: string; filters: Filters; limit: n
 export function loadSaved(): SavedSearch[] {
   const raw = localStorage.getItem(SAVED_KEY);
   if (!raw) return [];
-  const arr = JSON.parse(raw) as Partial<SavedSearch>[];
-  // Backfill ids for entries saved before they had one.
+  // Trust-boundary parse of our own localStorage payload; the persisted shape is
+  // a SavedSearch[] (older entries may lack `id`). Runtime-validating the full
+  // nested Filters here would be disproportionate, so cast the array shape and
+  // backfill the legacy-missing fields below.
+  // eslint-disable-next-line eslint-js/no-restricted-syntax -- localStorage trust boundary: our own SavedSearch[] payload; full Filters validation is disproportionate.
+  const arr = (JSON.parse(raw) as Partial<SavedSearch>[]) ?? [];
+  // Backfill ids for entries saved before they had one. Merge filters onto the
+  // defaults so an older snapshot missing a newer field still gets that default.
   return arr.map((s) => ({
     id: s.id ?? crypto.randomUUID(),
     name: s.name ?? "Saved search",
-    filters: s.filters!,
+    filters: { ...emptyFilters, ...s.filters },
     limit: s.limit ?? DEFAULT_LIMIT,
   }));
 }
@@ -69,6 +77,10 @@ export const emptyFilters: Filters = {
 // clean so no local paths or search text ever leak into a shareable/synced URL.
 export type HistorySnap = { filters: Filters; limit: number; open: { agent: Agent; id: string } | null };
 export function readHistory(): HistorySnap {
+  // history.state is `any`; this is our own snapshot. The fields are re-validated
+  // on read below (filters merged onto defaults, limit type-checked), so the only
+  // assertion is the entry's outer shape.
+  // eslint-disable-next-line eslint-js/no-restricted-syntax -- history.state trust boundary: our own snapshot; fields are re-validated below.
   const s = (window.history.state?.agtail ?? null) as Partial<HistorySnap> | null;
   return {
     // Merge onto emptyFilters so an older snapshot missing a newer field still

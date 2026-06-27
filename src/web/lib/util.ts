@@ -4,6 +4,12 @@ import type { Session } from "./api.js";
 // Search context carried from a hit into the opened session's in-view search.
 export type Seed = { find: string; tool?: string };
 
+/** Narrow an unknown JSON value to an object (type guard, not a cast). Mirrors
+ *  core/utils.ts `isRecord`; kept web-local to preserve the core↔web boundary. */
+export function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+
 // Human-readable label for a programmatic session's launch origin (Claude's
 // entrypoint or Codex's originator), so "what is this?" is answerable at a glance.
 export function originLabel(origin?: string): string {
