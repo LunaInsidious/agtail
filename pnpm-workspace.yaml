@@ -2,3 +2,8 @@
 # the platform binary used by vite / tsup / tsx.
 allowBuilds:
   esbuild: true
+
+# Force a patched esbuild everywhere (tsup/vite pull older transitive copies
+# affected by GHSA-g7r4-m6w7-qqqr — dev-server file read on Windows).
+overrides:
+  esbuild: ">=0.28.1"
