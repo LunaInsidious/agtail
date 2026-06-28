@@ -43,6 +43,11 @@ function SessionRow({
             🗄
           </span>
         )}
+        {s.imported && (
+          <span className="archmark" title="imported from another machine">
+            📥 imported
+          </span>
+        )}
         {s.programmatic && (
           <span className="automark" title={PROGRAMMATIC_TIP}>
             🤖 {originLabel(s.origin)}
@@ -149,6 +154,11 @@ function HitRow({
         {m.archived && (
           <span className="archmark" title="archived">
             🗄
+          </span>
+        )}
+        {m.imported && (
+          <span className="archmark" title="imported from another machine">
+            📥 imported
           </span>
         )}
         {m.programmatic && (

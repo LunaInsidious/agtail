@@ -49,6 +49,7 @@ export interface SessionMeta {
   models?: string[];
   version?: string;
   archived?: boolean;
+  imported?: boolean;
   programmatic?: boolean;
   origin?: string;
   isSubagent?: boolean;
@@ -72,6 +73,7 @@ export interface SessionHit {
   mtime: number;
   models?: string[];
   archived?: boolean;
+  imported?: boolean;
   programmatic?: boolean;
   origin?: string;
   isSubagent?: boolean;

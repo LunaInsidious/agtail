@@ -1,4 +1,4 @@
-import { basename } from "node:path";
+import { basename, dirname, sep } from "node:path";
 import { readFileSync, existsSync } from "node:fs";
 import type { Adapter } from "./types.js";
 import type { Event, Session, SessionMeta, Usage } from "../types.js";
@@ -6,6 +6,7 @@ import { iterJsonl } from "../jsonl.js";
 import { hasContent } from "../format.js";
 import { expandHome, mtimeMs, walkFiles } from "../walk.js";
 import { isRecord, obj, str } from "../utils.js";
+import { importStoreDir } from "../imported.js";
 import { firstLine } from "./utils.js";
 
 // Claude Code stores one JSONL transcript per session under
@@ -14,6 +15,7 @@ import { firstLine } from "./utils.js";
 // conversation precisely and surface everything else as `unknown` (never drop).
 
 const DEFAULT_ROOT = "~/.claude/projects";
+const AGENT = "claude-code";
 
 // Claude Code stamps a sentinel like "<synthetic>" on assistant messages it
 // fabricates locally (API errors, "[Request interrupted]" notices) rather than
@@ -356,7 +358,7 @@ async function readSession(path: string): Promise<Session> {
   const title = meta.title ?? (fallbackText ? firstLine(fallbackText) : undefined);
 
   return {
-    agent: "claude-code",
+    agent: AGENT,
     id: basename(path).replace(/\.jsonl$/, ""),
     path,
     cwd: meta.cwd,
@@ -382,24 +384,51 @@ async function readSession(path: string): Promise<Session> {
   };
 }
 
+const JSONL = ".jsonl";
+const isJsonl = (n: string) => n.endsWith(JSONL);
+// Both transcripts AND their sibling subagent metas are part of a session's
+// on-disk footprint, so export carries both.
+const isTransfer = (n: string) => n.endsWith(JSONL) || n.endsWith(".meta.json");
+
 export function claudeCodeAdapter(rootOverride?: string): Adapter {
   const root = expandHome(rootOverride ?? DEFAULT_ROOT);
+  // The agtail import store mirrors the native projects/ layout, read lazily so
+  // a relocated XDG_DATA_HOME (tests) is picked up. Sessions found under it are
+  // tagged imported by path prefix — exactly how codex tags archived.
+  const isImported = (p: string) => {
+    const store = importStoreDir(AGENT);
+    return p === store || p.startsWith(store + sep);
+  };
+
+  const read = async (path: string): Promise<Session> => {
+    const sess = await readSession(path);
+    if (isImported(path)) sess.imported = true;
+    return sess;
+  };
+
+  const scan = async (dir: string): Promise<SessionMeta[]> => {
+    const paths = await walkFiles(dir, isJsonl);
+    const metas = await Promise.all(
+      paths.map(async (p) => {
+        const sess = await read(p);
+        if (!hasContent(sess.events)) return null; // skip empty stub sessions
+        const { events, ...meta } = sess;
+        void events;
+        return meta;
+      }),
+    );
+    return metas.filter((m): m is SessionMeta => m !== null);
+  };
+
   return {
-    agent: "claude-code",
+    agent: AGENT,
+    base: dirname(root),
     roots: () => [root],
     async findSessions(): Promise<SessionMeta[]> {
-      const paths = await walkFiles(root, (n) => n.endsWith(".jsonl"));
-      const metas = await Promise.all(
-        paths.map(async (p) => {
-          const sess = await readSession(p);
-          if (!hasContent(sess.events)) return null; // skip empty stub sessions
-          const { events, ...meta } = sess;
-          void events;
-          return meta;
-        }),
-      );
-      return metas.filter((m): m is SessionMeta => m !== null);
+      const [native, imported] = await Promise.all([scan(root), scan(importStoreDir(AGENT))]);
+      return [...native, ...imported];
     },
-    readSession,
+    transferFiles: () => walkFiles(root, isTransfer),
+    readSession: read,
   };
 }

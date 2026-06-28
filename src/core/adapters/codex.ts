@@ -5,6 +5,7 @@ import { iterJsonl } from "../jsonl.js";
 import { hasContent } from "../format.js";
 import { expandHome, mtimeMs, walkFiles } from "../walk.js";
 import { collect, isRecord, obj, str } from "../utils.js";
+import { importStoreDir } from "../imported.js";
 import { firstLine } from "./utils.js";
 
 // OpenAI Codex CLI (v0.14x) stores one rollout JSONL per thread under
@@ -243,6 +244,8 @@ async function readSession(path: string): Promise<Session> {
   };
 }
 
+const isRollout = (n: string) => n.startsWith("rollout-") && n.endsWith(".jsonl");
+
 export function codexAdapter(rootOverride?: string): Adapter {
   const root = expandHome(rootOverride ?? DEFAULT_ROOT);
   // Codex moves finished threads to a sibling archived_sessions/ (same YYYY/MM/DD
@@ -250,15 +253,22 @@ export function codexAdapter(rootOverride?: string): Adapter {
   // them, so we tag by path prefix — that also covers reads via resolveSession.
   const archivedRoot = join(dirname(root), "archived_sessions");
   const isArchived = (p: string) => p === archivedRoot || p.startsWith(archivedRoot + sep);
+  // The agtail import store mirrors the native layout; sessions found under it
+  // are tagged imported by path prefix, same mechanism as archived.
+  const isImported = (p: string) => {
+    const store = importStoreDir("codex");
+    return p === store || p.startsWith(store + sep);
+  };
 
   const read = async (path: string): Promise<Session> => {
     const sess = await readSession(path);
     if (isArchived(path)) sess.archived = true;
+    if (isImported(path)) sess.imported = true;
     return sess;
   };
 
   const scan = async (dir: string): Promise<SessionMeta[]> => {
-    const paths = await walkFiles(dir, (n) => n.startsWith("rollout-") && n.endsWith(".jsonl"));
+    const paths = await walkFiles(dir, isRollout);
     const metas = await Promise.all(
       paths.map(async (p) => {
         const sess = await read(p);
@@ -273,9 +283,18 @@ export function codexAdapter(rootOverride?: string): Adapter {
 
   return {
     agent: "codex",
+    base: dirname(root),
     roots: () => [root, archivedRoot],
     async findSessions(): Promise<SessionMeta[]> {
-      const [active, archived] = await Promise.all([scan(root), scan(archivedRoot)]);
+      const [active, archived, imported] = await Promise.all([
+        scan(root),
+        scan(archivedRoot),
+        scan(importStoreDir("codex")),
+      ]);
+      return [...active, ...archived, ...imported];
+    },
+    transferFiles: async () => {
+      const [active, archived] = await Promise.all([walkFiles(root, isRollout), walkFiles(archivedRoot, isRollout)]);
       return [...active, ...archived];
     },
     readSession: read,

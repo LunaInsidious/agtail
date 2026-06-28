@@ -107,6 +107,10 @@ export interface SessionMeta {
   // normal codex session, just out of the agent's active resume picker.
   archived?: boolean;
 
+  // True when the session lives in agtail's own import store (synced in from
+  // another machine) rather than the native agent dirs. Orthogonal to agent.
+  imported?: boolean;
+
   // Machine-driven session (launched via the Agent SDK rather than the
   // interactive CLI/TUI) — hooks, scripts, headless review agents. Lets the UI
   // de-emphasize/filter programmatic noise from a human-history view.
@@ -154,6 +158,7 @@ export interface SessionHit {
   mtime: number;
   models?: string[];
   archived?: boolean;
+  imported?: boolean;
   programmatic?: boolean;
   origin?: string;
   // Subagent linkage, so search results can nest a matched child under its

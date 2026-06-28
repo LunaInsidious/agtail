@@ -1,9 +1,11 @@
 import { Command } from "commander";
+import { readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import type { Agent, ArchivedFilter, ProgrammaticFilter, TriFilter } from "../core/types.js";
 import { AGENTS, isAgent, isEventKind } from "../core/types.js";
 import type { RootOverrides } from "../core/adapters/types.js";
 import { findAllSessions, resolveSession } from "../core/adapters/index.js";
+import { assertBundle, exportSessions, importSessions } from "../core/transfer.js";
 import { search, searchSessions } from "../core/search.js";
 import { aggregateUsage, costForModel, usageSum } from "../core/cost.js";
 import { loadPriceResolver } from "../core/pricing.js";
@@ -52,6 +54,14 @@ interface StatsOpts {
 }
 interface ServeOpts {
   port?: string;
+}
+interface ExportOpts {
+  agent?: string;
+  out?: string;
+}
+interface ImportOpts {
+  to?: string;
+  overwrite?: boolean;
 }
 
 // Included by default; only|none narrows. Shared by --archived / --programmatic.
@@ -283,6 +293,27 @@ async function cmdStats(id: string | undefined, opts: StatsOpts, global: GlobalO
   else console.log(color(`  cost: unknown (unpriced models: ${u.unpricedModels.join(", ") || "—"})`, "dim"));
 }
 
+// --- export / import ---------------------------------------------------------
+async function cmdExport(opts: ExportOpts, global: GlobalOpts) {
+  const bundle = await exportSessions(parseAgents(opts.agent), overrides(global));
+  const json = JSON.stringify(bundle);
+  if (opts.out) await writeFile(opts.out, json);
+  else process.stdout.write(json + "\n");
+  console.error(`exported ${bundle.files.length} file(s)`);
+}
+
+async function cmdImport(file: string, opts: ImportOpts, global: GlobalOpts) {
+  const mode = opts.to ?? "agtail";
+  if (mode !== "native" && mode !== "agtail") {
+    console.error(`--to must be one of: native, agtail (got: ${mode})`);
+    process.exit(2);
+  }
+  const bundle: unknown = JSON.parse(await readFile(file, "utf-8"));
+  assertBundle(bundle);
+  const res = await importSessions(bundle, { mode, overwrite: Boolean(opts.overwrite) }, overrides(global));
+  console.log(`imported ${res.written}, skipped ${res.skipped}`);
+}
+
 // --- serve -------------------------------------------------------------------
 async function cmdServe(opts: ServeOpts, global: GlobalOpts) {
   const { startServer } = await import("../server/index.js");
@@ -344,6 +375,20 @@ program
   .option(AGENT_OPT, AGENT_DESC)
   .option("--project <substr>", "filter by cwd substring")
   .action((id, opts) => cmdStats(id, opts, g()));
+
+program
+  .command("export")
+  .description("bundle native sessions into a portable JSON export (to sync across machines)")
+  .option(AGENT_OPT, AGENT_DESC)
+  .option("-o, --out <file>", "write the bundle to a file (default: stdout)")
+  .action((opts) => cmdExport(opts, g()));
+
+program
+  .command("import <file>")
+  .description("import a session bundle (default into agtail's import store)")
+  .option("--to <dest>", "destination: native (agent dirs) | agtail (import store)", "agtail")
+  .option("--overwrite", "overwrite files that already exist at the destination")
+  .action((file, opts) => cmdImport(file, opts, g()));
 
 program
   .command("serve")

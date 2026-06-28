@@ -227,6 +227,7 @@ export async function searchSessionHits(f: SearchFilters): Promise<SessionHit[]>
         mtime: session.mtime,
         models: meta.models,
         archived: meta.archived,
+        imported: meta.imported,
         programmatic: meta.programmatic,
         origin: meta.origin,
         isSubagent: meta.isSubagent,
