@@ -17,6 +17,25 @@
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
   --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
+
+/* Light theme: override the colour tokens; structure/spacing tokens are shared.
+   Accents are darkened a touch so they keep contrast on a light background. */
+:root[data-theme="light"] {
+  --bg: #f7f8fa;
+  --panel: #ffffff;
+  --panel2: #eceff4;
+  --border: #d4dae3;
+  --text: #1c2230;
+  --muted: #5a6477;
+  --faint: #98a1b2;
+  --user: #2f7da0;
+  --tool: #c07d1e;
+  --ok: #3f7a5b;
+  --err: #c0392b;
+  --think: #6a5d96;
+  --claude: #b35a3c;
+  --codex: #3f8568;
+}
 * {
   box-sizing: border-box;
 }
@@ -77,6 +96,10 @@ header select {
 header select {
   max-width: 200px;
   cursor: pointer;
+}
+.theme {
+  cursor: pointer;
+  line-height: 1;
 }
 .searchbox {
   position: relative;

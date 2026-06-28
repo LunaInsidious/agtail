@@ -11,6 +11,7 @@ import { useOpenSession } from "./hooks/useOpenSession.js";
 import { useSavedSearches } from "./hooks/useSavedSearches.js";
 import { useRecentSearches } from "./hooks/useRecentSearches.js";
 import { useHistoryNav } from "./hooks/useHistoryNav.js";
+import { useTheme } from "./hooks/useTheme.js";
 
 // eslint-disable-next-line sonarjs/cognitive-complexity -- root container: breadth of UI state and handlers; already decomposed into hooks/ and components/. Ratchet target.
 export function App() {
@@ -88,6 +89,8 @@ export function App() {
 
   // Browser history (back/forward + reload) carries filters, limit, open session.
   useHistoryNav({ filters, limit, cur, open, setFilters, setLimit, setCur, setManageSaved });
+
+  const { theme, toggle: toggleTheme } = useTheme();
 
   // Status filter mirrors the agent toggles: two chips (active / archived) where
   // neither-or-both selected means "all", matching the agents "none = all" idiom.
@@ -257,6 +260,14 @@ export function App() {
         <span className="brand">
           <b>≋</b> agtail
         </span>
+        <button
+          type="button"
+          className="theme"
+          onClick={toggleTheme}
+          title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+        >
+          {theme === "dark" ? "☀" : "🌙"}
+        </button>
         <form className="search" onSubmit={runSearch}>
           <div className="searchbox">
             <input
