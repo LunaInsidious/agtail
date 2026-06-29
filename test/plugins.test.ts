@@ -35,6 +35,21 @@ describe("loadPluginResolver", () => {
     expect(resolve.forPrompt("help me fix this bug in the parser")).toBeUndefined();
   });
 
+  it("attributes a prompt-file plugin (no SDK code, ships a prompts/*.txt) like remember", async () => {
+    process.env.AGTAIL_PLUGINS_DIR = pluginsDir;
+    resetPluginCache();
+    const resolve = await loadPluginResolver();
+    // The memory summarizer's prompt lives in prompts/save-session.prompt.txt, not
+    // in code — and the plugin has no SDK marker. It still attributes via the
+    // prompt-file, and doesn't collide with the security-guidance review prompt.
+    expect(resolve.forPrompt("You are summarizing a Claude Code session for a daily memory log.\n\n…")).toBe(
+      "remember",
+    );
+    expect(resolve.forPrompt("Review this change for security vulnerabilities.\n\nChanged files…")).toBe(
+      "security-guidance",
+    );
+  });
+
   it("does NOT attribute when the first line is dynamic (deliberate: only the first line is trusted)", async () => {
     process.env.AGTAIL_PLUGINS_DIR = pluginsDir;
     resetPluginCache();

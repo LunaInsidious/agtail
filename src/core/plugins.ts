@@ -1,5 +1,5 @@
-import { readFile } from "node:fs/promises";
-import { dirname, join, sep } from "node:path";
+import { readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { homedir } from "node:os";
 import { walkFiles } from "./walk.js";
 import { isRecord } from "./utils.js";
@@ -61,62 +61,81 @@ const SDK_MARKERS = [
   "@anthropic-ai/claude-agent-sdk",
   "@anthropic-ai/claude-code",
 ];
-const SOURCE_FILE = /\.(py|js|mjs|cjs|ts)$/;
+// Scanned for both SDK markers (code) and prompt templates: a plugin may build
+// its spawned-agent prompt inline in code, or ship it as a prompts/*.txt file.
+const SOURCE_FILE = /\.(py|js|mjs|cjs|ts|md|txt|prompt)$/;
 const VENDOR_DIR = /(?:^|[/\\])(?:node_modules|site-packages|__pycache__|\.venv|dist)(?:[/\\]|$)/;
+// A file that holds an agent prompt template (so the plugin spawns sessions).
+const PROMPT_FILE = /(?:[/\\]prompts[/\\]|\.prompt(?:\.txt)?$)/;
+
+async function subdirs(dir: string): Promise<string[]> {
+  try {
+    return (await readdir(dir, { withFileTypes: true })).filter((e) => e.isDirectory()).map((e) => e.name);
+  } catch {
+    return [];
+  }
+}
+
+/** Every installed plugin version dir, by the cache layout
+ *  cache/<marketplace>/<plugin>/<version>/ — so prompt-only plugins (no
+ *  hooks.json) are discovered too, not just hooked ones. */
+async function pluginRoots(cacheDir: string): Promise<{ root: string; plugin: string }[]> {
+  const out: { root: string; plugin: string }[] = [];
+  for (const marketplace of await subdirs(cacheDir)) {
+    for (const plugin of await subdirs(join(cacheDir, marketplace))) {
+      for (const version of await subdirs(join(cacheDir, marketplace, plugin))) {
+        out.push({ root: join(cacheDir, marketplace, plugin, version), plugin });
+      }
+    }
+  }
+  return out;
+}
 
 async function buildResolver(): Promise<PluginResolver> {
   const cacheDir = pluginsCacheDir();
   const byCommand = new Map<string, string>();
-  const roots = new Map<string, string>(); // <plugin>/<version> dir -> plugin name
-
-  for (const file of await walkFiles(cacheDir, (n) => n === "hooks.json")) {
-    const name = pluginNameFromPath(file, cacheDir);
-    if (!name) continue;
-    for (const cmd of await commandsOf(file)) if (!byCommand.has(cmd)) byCommand.set(cmd, name);
-    roots.set(dirname(dirname(file)), name); // …/<plugin>/<ver>/hooks/hooks.json → …/<plugin>/<ver>
-  }
-
-  // Concatenated source of each Agent-SDK-calling plugin — only those can spawn
-  // sessions. We match a session's prompt AGAINST this (never the reverse), so
-  // program literals in source can't false-match an arbitrary prompt.
-  const sdkSources: { plugin: string; text: string }[] = [];
-  for (const [root, plugin] of roots) {
-    const text = await sdkSourceText(root);
-    if (text) sdkSources.push({ plugin, text });
+  // Each spawning plugin's source + prompt files. We match a session's prompt
+  // AGAINST this (never the reverse), so program literals can't false-match.
+  const spawners: { plugin: string; text: string }[] = [];
+  for (const { root, plugin } of await pluginRoots(cacheDir)) {
+    for (const cmd of await commandsOf(join(root, "hooks", "hooks.json"))) {
+      if (!byCommand.has(cmd)) byCommand.set(cmd, plugin);
+    }
+    const text = await spawnerSourceText(root);
+    if (text) spawners.push({ plugin, text });
   }
 
   return {
     forCommand: (command) => byCommand.get(command),
-    forPrompt: (prompt) => attributePrompt(prompt, sdkSources),
+    forPrompt: (prompt) => attributePrompt(prompt, spawners),
   };
 }
 
 const wordCount = (line: string) => (line.match(/[A-Za-z0-9]+/g) ?? []).length;
 
-/** Attribute a spawned SDK session to a plugin: its prompt's FIRST line, if it's
- *  prose (≥ MIN_WORDS words) and long enough (≥ MIN_FIRST_LINE), must appear
- *  verbatim in exactly one SDK-calling plugin's source. Only the first line is
- *  trusted — interior lines proved to collide across plugins (see the constants).
- *  Returns undefined on no match, a tie, or a dynamic/short first line. */
-function attributePrompt(prompt: string, sdkSources: { plugin: string; text: string }[]): string | undefined {
+/** Attribute a spawned session to a plugin: its prompt's FIRST line, if it's prose
+ *  (≥ MIN_WORDS words) and long enough (≥ MIN_FIRST_LINE), must appear verbatim in
+ *  exactly one spawning plugin's source/prompts. Only the first line is trusted —
+ *  interior lines proved to collide across plugins (see the constants). Returns
+ *  undefined on no match, a tie, or a dynamic/short first line. */
+function attributePrompt(prompt: string, spawners: { plugin: string; text: string }[]): string | undefined {
   const first = (prompt.split("\n").find((l) => l.trim()) ?? "").trim();
   if (first.length < MIN_FIRST_LINE || wordCount(first) < MIN_WORDS) return undefined;
-  const hits = sdkSources.filter((s) => s.text.includes(first));
-  return hits.length === 1 ? hits[0]?.plugin : undefined;
+  // Uniqueness is on the plugin NAME, not entry count — a plugin can have several
+  // installed versions (each a separate entry) that all contain the line.
+  const names = new Set(spawners.filter((s) => s.text.includes(first)).map((s) => s.plugin));
+  return names.size === 1 ? [...names][0] : undefined;
 }
 
-/** cache/<marketplace>/<plugin>/<version>/hooks/hooks.json -> <plugin>. */
-function pluginNameFromPath(file: string, cacheDir: string): string | undefined {
-  if (!file.startsWith(cacheDir + sep)) return undefined;
-  return file.slice(cacheDir.length + 1).split(sep)[1];
-}
-
-/** A plugin's concatenated source IF it calls the Agent SDK, else "". */
-async function sdkSourceText(root: string): Promise<string> {
+/** A plugin's concatenated source+prompts IF it can spawn sessions (calls the
+ *  Agent SDK, or ships a prompt template), else "" — so we don't match prompts
+ *  against doc-only plugins. */
+async function spawnerSourceText(root: string): Promise<string> {
   const files = (await walkFiles(root, (n) => SOURCE_FILE.test(n))).filter((f) => !VENDOR_DIR.test(f));
   const texts = await Promise.all(files.map(readText));
   const all = texts.join("\n");
-  return SDK_MARKERS.some((m) => all.includes(m)) ? all : "";
+  const spawns = SDK_MARKERS.some((m) => all.includes(m)) || files.some((f) => PROMPT_FILE.test(f));
+  return spawns ? all : "";
 }
 
 async function readText(path: string): Promise<string> {
