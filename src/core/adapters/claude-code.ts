@@ -1,4 +1,4 @@
-import { basename, dirname, sep } from "node:path";
+import { basename, dirname } from "node:path";
 import { readFileSync, existsSync } from "node:fs";
 import type { Adapter } from "./types.js";
 import type { Event, Session, SessionMeta, Usage } from "../types.js";
@@ -6,7 +6,7 @@ import { iterJsonl } from "../jsonl.js";
 import { hasContent } from "../format.js";
 import { expandHome, mtimeMs, walkFiles } from "../walk.js";
 import { isRecord, obj, str } from "../utils.js";
-import { importStoreDir } from "../imported.js";
+import { collectionDir, collectionOf, listCollections } from "../imported.js";
 import { firstLine } from "./utils.js";
 
 // Claude Code stores one JSONL transcript per session under
@@ -393,16 +393,15 @@ const isTransfer = (n: string) => n.endsWith(JSONL) || n.endsWith(".meta.json");
 export function claudeCodeAdapter(rootOverride?: string): Adapter {
   const root = expandHome(rootOverride ?? DEFAULT_ROOT);
   // The agtail import store mirrors the native projects/ layout, read lazily so
-  // a relocated XDG_DATA_HOME (tests) is picked up. Sessions found under it are
-  // tagged imported by path prefix — exactly how codex tags archived.
-  const isImported = (p: string) => {
-    const store = importStoreDir(AGENT);
-    return p === store || p.startsWith(store + sep);
-  };
-
+  // a relocated XDG_DATA_HOME (tests) is picked up. A session found under it is
+  // tagged imported + the collection (first path segment) it came from.
   const read = async (path: string): Promise<Session> => {
     const sess = await readSession(path);
-    if (isImported(path)) sess.imported = true;
+    const col = collectionOf(path);
+    if (col) {
+      sess.imported = true;
+      sess.importedFrom = col;
+    }
     return sess;
   };
 
@@ -425,8 +424,9 @@ export function claudeCodeAdapter(rootOverride?: string): Adapter {
     base: dirname(root),
     roots: () => [root],
     async findSessions(): Promise<SessionMeta[]> {
-      const [native, imported] = await Promise.all([scan(root), scan(importStoreDir(AGENT))]);
-      return [...native, ...imported];
+      const imported = listCollections().map((c) => scan(collectionDir(c, AGENT)));
+      const lists = await Promise.all([scan(root), ...imported]);
+      return lists.flat();
     },
     transferFiles: () => walkFiles(root, isTransfer),
     readSession: read,

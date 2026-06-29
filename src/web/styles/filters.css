@@ -10,6 +10,211 @@
   width: 240px;
   gap: 3px;
 }
+
+/* Header source switcher: scope the view to one imported collection. */
+.srcmenu {
+  position: relative;
+  flex: 0 0 auto;
+}
+.srcpop {
+  left: 0;
+  right: auto;
+  width: 220px;
+  gap: 2px;
+}
+.srcpop .savedapply {
+  display: flex;
+  align-items: center;
+}
+.srcpop .savedapply em {
+  margin-left: auto;
+  color: var(--faint);
+  font-style: normal;
+  font-size: 10.5px;
+}
+/* Invalid collection name (empty or illegal chars). */
+.nameinput.bad {
+  border-color: var(--err);
+}
+
+/* Sync (⋯) menu: a short list of export/import items, plus the inline import
+   confirmation and result. Reuses .filterpop's frame; tightens width + gap. */
+.syncpop {
+  width: 250px;
+  gap: 3px;
+}
+.syncmsg {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  font-family: var(--mono);
+}
+.syncmsg .note {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.syncmsg .err {
+  color: var(--err);
+}
+.syncmsg .note.warn {
+  color: var(--tool);
+}
+/* Import options: destination + conflict policy, as compact radio groups. */
+.syncopt {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.syncopt > .lbl {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.syncopt label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.syncopt label.on {
+  color: var(--text);
+}
+.syncopt label em {
+  margin-left: auto;
+  color: var(--faint);
+  font-style: normal;
+  font-size: 10.5px;
+}
+/* native + overwrite is the one irreversible combo: gate it behind a loud
+   warning and a required acknowledgement. */
+.dangerbox {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  border: 1px solid var(--err);
+  background: rgba(217, 108, 108, 0.12);
+  border-radius: var(--rad);
+  padding: 8px 9px;
+  color: var(--err);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+.dangerbox .ack {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+.namesave:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.namesave.danger:not(:disabled) {
+  color: var(--err);
+  border-color: var(--err);
+  background: rgba(217, 108, 108, 0.15);
+}
+/* File chooser (shown after the destination/conflict choices). */
+.filepick {
+  display: flex;
+}
+.choosefile {
+  width: 100%;
+  background: var(--panel2);
+  border: 1px dashed var(--border);
+  color: var(--tool);
+  border-radius: var(--rad);
+  padding: 7px;
+  font-family: var(--mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+.choosefile:hover {
+  border-color: var(--tool);
+}
+.picked {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text);
+}
+.picked .pname {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.changefile {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.changefile:hover {
+  color: var(--tool);
+}
+.xfile {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 8px;
+}
+.xfile:hover {
+  color: var(--err);
+  background: rgba(217, 108, 108, 0.15);
+}
+.syncmsg .row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.syncmsg .row button {
+  font-family: var(--mono);
+  font-size: 12px;
+  border-radius: var(--rad);
+  padding: 5px 12px;
+  cursor: pointer;
+}
+/* Export confirmation popover, anchored to the list-header button (right edge of
+   the sidebar) so it drops down within the panel. */
+.exp {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+/* Import lives in the header (⬆ beside the theme toggle); its confirmation
+   popover drops down left-aligned under the button. */
+.imp {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.imppop {
+  left: 0;
+  right: auto;
+}
 .savedempty {
   color: var(--muted);
   font-size: 11.5px;

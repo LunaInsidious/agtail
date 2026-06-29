@@ -1,5 +1,5 @@
 import type { Agent, ArchivedFilter, ProgrammaticFilter, Session, SessionMeta } from "../types.js";
-import { matchArchived, matchProgrammatic } from "../types.js";
+import { matchArchived, matchProgrammatic, matchSource } from "../types.js";
 import type { Adapter, RootOverrides } from "./types.js";
 import { claudeCodeAdapter } from "./claude-code.js";
 import { codexAdapter } from "./codex.js";
@@ -21,20 +21,27 @@ export function selectAdapters(agents?: Agent[], overrides: RootOverrides = {}):
 
 /** Cross-agent session listing, newest first. Archived sessions are included
  *  unless `archived` narrows to "only" / "none" (they are still real history). */
+/** Cross-agent listing filters (all optional; absent = no narrowing). */
+export interface ListFilters {
+  archived?: ArchivedFilter;
+  programmatic?: ProgrammaticFilter;
+  models?: string[];
+  source?: string;
+}
+
 export async function findAllSessions(
   agents?: Agent[],
   overrides?: RootOverrides,
-  archived?: ArchivedFilter,
-  programmatic?: ProgrammaticFilter,
-  models?: string[],
+  f: ListFilters = {},
 ): Promise<SessionMeta[]> {
   const adapters = selectAdapters(agents, overrides);
   const lists = await Promise.all(adapters.map((a) => a.findSessions()));
   const used = (m: SessionMeta) => m.models ?? (m.model ? [m.model] : []);
   return lists
     .flat()
-    .filter((m) => matchArchived(m, archived) && matchProgrammatic(m, programmatic))
-    .filter((m) => !models?.length || models.some((x) => used(m).includes(x)))
+    .filter((m) => matchArchived(m, f.archived) && matchProgrammatic(m, f.programmatic))
+    .filter((m) => !f.models?.length || f.models.some((x) => used(m).includes(x)))
+    .filter((m) => matchSource(m, f.source))
     .sort((a, b) => b.mtime - a.mtime);
 }
 

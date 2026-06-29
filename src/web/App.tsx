@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { apiFacets, apiSearch, apiSessions, type Filters, type SessionHit, type SessionMeta } from "./lib/api.js";
+import { apiSearch, apiSessions, type Filters, type SessionHit, type SessionMeta } from "./lib/api.js";
 import { filterChips } from "./lib/filters.js";
 import { readHistory } from "./lib/state.js";
 import { FilterPanel } from "./components/FilterPanel.js";
@@ -7,20 +7,18 @@ import { ManageSaved } from "./components/ManageSaved.js";
 import { SavedMenu } from "./components/SavedMenu.js";
 import { HitList, SessionList } from "./components/SessionList.js";
 import { Timeline } from "./components/Timeline.js";
+import { ExportButton, ImportButton } from "./components/SyncControls.js";
+import { SourceSwitcher } from "./components/SourceSwitcher.js";
 import { useOpenSession } from "./hooks/useOpenSession.js";
 import { useSavedSearches } from "./hooks/useSavedSearches.js";
 import { useRecentSearches } from "./hooks/useRecentSearches.js";
 import { useHistoryNav } from "./hooks/useHistoryNav.js";
+import { useLookups } from "./hooks/useLookups.js";
 import { useTheme } from "./hooks/useTheme.js";
 
 // eslint-disable-next-line sonarjs/cognitive-complexity -- root container: breadth of UI state and handlers; already decomposed into hooks/ and components/. Ratchet target.
 export function App() {
   const [filters, setFilters] = useState<Filters>(() => readHistory().filters);
-  const [facets, setFacets] = useState<{ tools: string[]; cwds: string[]; models: string[] }>({
-    tools: [],
-    cwds: [],
-    models: [],
-  });
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [hits, setHits] = useState<SessionHit[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -28,6 +26,10 @@ export function App() {
   const sessionsSeq = useRef(0); // same, for the session-list fetch
   const [showFilters, setShowFilters] = useState(false);
   const [limit, setLimit] = useState<number>(() => readHistory().limit);
+  // Bumped after an import to soft-refresh the lists (no full page reload).
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  // Facets (filter options) + imported sources (switcher), loaded on demand.
+  const { facets, sources } = useLookups(showFilters, refreshNonce);
   const set = (p: Partial<Filters>) => setFilters((f) => ({ ...f, ...p }));
 
   // A content search (query / tool / date / kind) produces snippets; attribute
@@ -153,6 +155,9 @@ export function App() {
   // Hits are matching sessions. With a finite cap, reaching it means more
   // sessions matched than were returned; "All" (limit 0) never truncates.
   const truncated = !!hits && limit > 0 && hits.length >= limit;
+  // What the export button scopes to: the matched count when filtering, else the
+  // browse count (null until loaded).
+  const listCount = anyFilter ? (hits ? hits.length : null) : sessions.length || null;
 
   // Resizable sidebar (persisted).
   const [sbWidth, setSbWidth] = useState(() => {
@@ -182,15 +187,11 @@ export function App() {
   useEffect(() => {
     if (anyFilter) return;
     const seq = ++sessionsSeq.current;
-    apiSessions({}).then((s) => {
+    apiSessions({ source: filters.source }).then((s) => {
       if (sessionsSeq.current === seq) setSessions(s);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [anyFilter]);
-
-  useEffect(() => {
-    apiFacets().then(setFacets);
-  }, []);
+  }, [anyFilter, refreshNonce, filters.source]);
 
   // A signature of every field the live search depends on, so the effect's
   // dependency list is one statically-checkable value rather than inline joins.
@@ -201,6 +202,7 @@ export function App() {
     filters.tools,
     filters.models,
     filters.cwds,
+    filters.source,
     filters.since,
     filters.until,
     filters.kinds,
@@ -208,6 +210,7 @@ export function App() {
     filters.archived,
     filters.programmatic,
     limit,
+    refreshNonce,
   ]);
 
   // Live search: re-run as filters change (debounced so typing isn't a request
@@ -260,6 +263,9 @@ export function App() {
         <span className="brand">
           <b>≋</b> agtail
         </span>
+        {sources.length > 0 && (
+          <SourceSwitcher sources={sources} value={filters.source} onChange={(source) => set({ source })} />
+        )}
         <button
           type="button"
           className="theme"
@@ -268,6 +274,7 @@ export function App() {
         >
           {theme === "dark" ? "☀" : "🌙"}
         </button>
+        <ImportButton existingSources={sources.map((s) => s.name)} onImported={() => setRefreshNonce((n) => n + 1)} />
         <form className="search" onSubmit={runSearch}>
           <div className="searchbox">
             <input
@@ -392,12 +399,15 @@ export function App() {
               tree; searching shows only matched sessions (matched child nested
               under matched parent, else standalone). */}
           <div className="listhead">
-            {anyFilter ? (
-              <>Results {hits ? `(${hits.length}${truncated ? "+" : ""})` : ""}</>
-            ) : (
-              <>Sessions {sessions.length ? `(${sessions.length})` : ""}</>
-            )}
-            {searching && <span className="spinner" />}
+            <span className="lhlabel">
+              {anyFilter ? (
+                <>Results {hits ? `(${hits.length}${truncated ? "+" : ""})` : ""}</>
+              ) : (
+                <>Sessions {sessions.length ? `(${sessions.length})` : ""}</>
+              )}
+              {searching && <span className="spinner" />}
+            </span>
+            <ExportButton activeFilter={anyFilter} count={listCount} truncated={truncated} filters={filters} />
           </div>
           {anyFilter ? (
             <HitList

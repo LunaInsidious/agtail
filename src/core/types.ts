@@ -30,6 +30,16 @@ export const matchArchived = (m: { archived?: boolean }, f?: ArchivedFilter) => 
 /** Whether a session passes a programmatic filter (default "all" => everything). */
 export const matchProgrammatic = (m: { programmatic?: boolean }, f?: ProgrammaticFilter) => matchTri(m.programmatic, f);
 
+// Sentinel `source` value selecting only this machine's own (non-imported)
+// sessions. The "@" can't appear in a sanitized collection name, so it never
+// collides with a real source. (Mirrored as a literal in the web layer.)
+export const LOCAL_SOURCE = "@local";
+
+/** Whether a session passes a source filter: "" = any, LOCAL_SOURCE = only
+ *  this machine's, else a specific imported collection. */
+export const matchSource = (m: { imported?: boolean; importedFrom?: string }, source?: string): boolean =>
+  !source || (source === LOCAL_SOURCE ? !m.imported : m.importedFrom === source);
+
 /** Token usage for one assistant turn (fields optional; agents differ). */
 export interface Usage {
   inputTokens?: number;
@@ -110,6 +120,9 @@ export interface SessionMeta {
   // True when the session lives in agtail's own import store (synced in from
   // another machine) rather than the native agent dirs. Orthogonal to agent.
   imported?: boolean;
+  // The named import collection it came from (one per synced person/machine), so
+  // imported histories can be told apart and switched between.
+  importedFrom?: string;
 
   // Machine-driven session (launched via the Agent SDK rather than the
   // interactive CLI/TUI) — hooks, scripts, headless review agents. Lets the UI
@@ -159,6 +172,7 @@ export interface SessionHit {
   models?: string[];
   archived?: boolean;
   imported?: boolean;
+  importedFrom?: string;
   programmatic?: boolean;
   origin?: string;
   // Subagent linkage, so search results can nest a matched child under its

@@ -68,6 +68,7 @@ export const emptyFilters: Filters = {
   until: "",
   kinds: [],
   mask: false,
+  source: "",
   archived: "all",
   programmatic: "all",
 };

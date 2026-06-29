@@ -6,63 +6,26 @@ import { AGENTS, isAgent, isEventKind } from "../core/types.js";
 import type { RootOverrides } from "../core/adapters/types.js";
 import { findAllSessions, resolveSession } from "../core/adapters/index.js";
 import { assertBundle, exportSessions, importSessions } from "../core/transfer.js";
-import { search, searchSessions } from "../core/search.js";
+import { listCollections } from "../core/imported.js";
+import { matchingSessionRefs, search, searchSessions } from "../core/search.js";
 import { aggregateUsage, costForModel, usageSum } from "../core/cost.js";
 import { loadPriceResolver } from "../core/pricing.js";
 import { displayRole, isHumanMessage, summarizeInput } from "../core/format.js";
 import { mask as maskText, maskValue } from "../core/mask.js";
 import { color, shortTs } from "./colors.js";
+import type {
+  ExportOpts,
+  GlobalOpts,
+  GrepOpts,
+  ImportOpts,
+  ListOpts,
+  ServeOpts,
+  ShowOpts,
+  StatsOpts,
+} from "./options.js";
 
 const HOME = homedir();
 const tilde = (p?: string) => (p ?? "?").replace(HOME, "~");
-
-interface GlobalOpts {
-  claudeDir?: string;
-  codexDir?: string;
-  mask?: boolean;
-  archived?: string; // "all" (default) | "only" | "none"
-  programmatic?: string; // "all" (default) | "only" | "none"
-}
-
-// Per-command flag shapes. commander hands `.action` a loosely-typed options
-// object; these interfaces describe just the flags each command reads.
-interface GrepOpts {
-  regex?: boolean;
-  caseSensitive?: boolean;
-  agent?: string;
-  tool?: string[];
-  cwd?: string;
-  since?: string;
-  until?: string;
-  kind?: string;
-  limit?: string;
-  json?: boolean;
-}
-interface ListOpts {
-  agent?: string;
-  project?: string;
-  since?: string;
-  until?: string;
-}
-interface ShowOpts {
-  agent?: string;
-  tools?: boolean;
-}
-interface StatsOpts {
-  agent?: string;
-  project?: string;
-}
-interface ServeOpts {
-  port?: string;
-}
-interface ExportOpts {
-  agent?: string;
-  out?: string;
-}
-interface ImportOpts {
-  to?: string;
-  overwrite?: boolean;
-}
 
 // Included by default; only|none narrows. Shared by --archived / --programmatic.
 function triFilter(flag: string, v: string | undefined): TriFilter {
@@ -109,6 +72,7 @@ async function cmdGrep(pattern: string | undefined, opts: GrepOpts, global: Glob
     agents: parseAgents(opts.agent),
     tools: opts.tool?.length ? opts.tool : undefined,
     cwds: opts.cwd ? [opts.cwd] : undefined,
+    source: opts.source,
     since: opts.since,
     until: opts.until,
     kinds: opts.kind ? opts.kind.split(",").filter(isEventKind) : undefined,
@@ -137,12 +101,11 @@ async function cmdGrep(pattern: string | undefined, opts: GrepOpts, global: Glob
 
 // --- list --------------------------------------------------------------------
 async function cmdList(opts: ListOpts, global: GlobalOpts) {
-  const all = await findAllSessions(
-    parseAgents(opts.agent),
-    overrides(global),
-    archivedFilter(global),
-    programmaticFilter(global),
-  );
+  const all = await findAllSessions(parseAgents(opts.agent), overrides(global), {
+    archived: archivedFilter(global),
+    programmatic: programmaticFilter(global),
+    source: opts.source,
+  });
   const proj = opts.project?.toLowerCase();
   const pass = (m: (typeof all)[number]) =>
     (!proj || (m.cwd ?? "").toLowerCase().includes(proj)) &&
@@ -257,7 +220,12 @@ async function cmdStats(id: string | undefined, opts: StatsOpts, global: GlobalO
   const sessions = id
     ? [await resolveSession(id, agents, ov)].filter(Boolean)
     : await Promise.all(
-        (await findAllSessions(agents, ov, archivedFilter(global), programmaticFilter(global)))
+        (
+          await findAllSessions(agents, ov, {
+            archived: archivedFilter(global),
+            programmatic: programmaticFilter(global),
+          })
+        )
           .filter((m) => !opts.project || (m.cwd ?? "").toLowerCase().includes(opts.project.toLowerCase()))
           .map((m) => resolveSession(m.id, [m.agent], ov)),
       );
@@ -295,11 +263,34 @@ async function cmdStats(id: string | undefined, opts: StatsOpts, global: GlobalO
 
 // --- export / import ---------------------------------------------------------
 async function cmdExport(opts: ExportOpts, global: GlobalOpts) {
-  const bundle = await exportSessions(parseAgents(opts.agent), overrides(global));
+  const agents = parseAgents(opts.agent);
+  const ov = overrides(global);
+  // Any filter flag narrows the export to matching sessions (re-run unbounded, so
+  // nothing is dropped); with none, every native session is bundled.
+  const hasFilter = Boolean(
+    opts.query || opts.tool?.length || opts.model?.length || opts.cwd || opts.since || opts.until || opts.kind,
+  );
+  const selection = hasFilter
+    ? await matchingSessionRefs({
+        pattern: opts.query,
+        agents,
+        tools: opts.tool?.length ? opts.tool : undefined,
+        models: opts.model?.length ? opts.model : undefined,
+        cwds: opts.cwd ? [opts.cwd] : undefined,
+        since: opts.since,
+        until: opts.until,
+        kinds: opts.kind ? opts.kind.split(",").filter(isEventKind) : undefined,
+        archived: archivedFilter(global),
+        programmatic: programmaticFilter(global),
+        overrides: ov,
+      })
+    : undefined;
+  const bundle = await exportSessions({ agents, selection }, ov);
   const json = JSON.stringify(bundle);
   if (opts.out) await writeFile(opts.out, json);
   else process.stdout.write(json + "\n");
-  console.error(`exported ${bundle.files.length} file(s)`);
+  const scope = hasFilter ? ` from ${selection?.length ?? 0} matching session(s)` : "";
+  console.error(`exported ${bundle.files.length} file(s)${scope}`);
 }
 
 async function cmdImport(file: string, opts: ImportOpts, global: GlobalOpts) {
@@ -310,7 +301,11 @@ async function cmdImport(file: string, opts: ImportOpts, global: GlobalOpts) {
   }
   const bundle: unknown = JSON.parse(await readFile(file, "utf-8"));
   assertBundle(bundle);
-  const res = await importSessions(bundle, { mode, overwrite: Boolean(opts.overwrite) }, overrides(global));
+  const res = await importSessions(
+    bundle,
+    { mode, overwrite: Boolean(opts.overwrite), collection: opts.name },
+    overrides(global),
+  );
   console.log(`imported ${res.written}, skipped ${res.skipped}`);
 }
 
@@ -334,6 +329,10 @@ program
 // The --agent option is shared by every subcommand.
 const AGENT_OPT = "--agent <agents>";
 const AGENT_DESC = "limit to agents (comma-separated)";
+const SINCE_OPT = "--since <date>";
+const UNTIL_OPT = "--until <date>";
+const SOURCE_OPT = "--source <name>";
+const SOURCE_DESC = "restrict to one imported collection (see `agtail sources`)";
 
 const g = (): GlobalOpts => program.opts();
 
@@ -343,8 +342,9 @@ program
   .option(AGENT_OPT, "limit to agents (comma-separated: claude-code,codex)")
   .option("--tool <glob>", "restrict to a tool (repeatable; e.g. Bash, Write, 'mcp__*')", collect, [])
   .option("--cwd <substr>", "restrict to sessions whose cwd contains this")
-  .option("--since <date>", "only events at/after this ISO date")
-  .option("--until <date>", "only events at/before this ISO date")
+  .option(SOURCE_OPT, SOURCE_DESC)
+  .option(SINCE_OPT, "only events at/after this ISO date")
+  .option(UNTIL_OPT, "only events at/before this ISO date")
   .option("--kind <kinds>", "restrict to event kinds (comma-separated)")
   .option("--regex", "treat pattern as a regular expression")
   .option("--case-sensitive", "case-sensitive match")
@@ -358,9 +358,15 @@ program
   .description("list sessions across agents, newest first")
   .option(AGENT_OPT, AGENT_DESC)
   .option("--project <substr>", "filter by cwd substring")
-  .option("--since <date>")
-  .option("--until <date>")
+  .option(SOURCE_OPT, SOURCE_DESC)
+  .option(SINCE_OPT)
+  .option(UNTIL_OPT)
   .action((opts) => cmdList(opts, g()));
+
+program
+  .command("sources")
+  .description("list imported collections (one synced person/machine each)")
+  .action(() => console.log(listCollections().join("\n") || "no imported collections"));
 
 program
   .command("show <id>")
@@ -381,12 +387,22 @@ program
   .description("bundle native sessions into a portable JSON export (to sync across machines)")
   .option(AGENT_OPT, AGENT_DESC)
   .option("-o, --out <file>", "write the bundle to a file (default: stdout)")
+  // Filters select which sessions to bundle (each match exports its whole
+  // transcript). With none, every session is exported.
+  .option("--query <text>", "only sessions whose content matches this text")
+  .option("--tool <glob>", "only sessions using a tool (repeatable; e.g. Bash, 'mcp__*')", collect, [])
+  .option("--model <name>", "only sessions using a model (repeatable)", collect, [])
+  .option("--cwd <substr>", "only sessions whose cwd contains this")
+  .option(SINCE_OPT, "only sessions with activity at/after this ISO date")
+  .option(UNTIL_OPT, "only sessions with activity at/before this ISO date")
+  .option("--kind <kinds>", "only sessions with these event kinds (comma-separated)")
   .action((opts) => cmdExport(opts, g()));
 
 program
   .command("import <file>")
   .description("import a session bundle (default into agtail's import store)")
   .option("--to <dest>", "destination: native (agent dirs) | agtail (import store)", "agtail")
+  .option("--name <collection>", "agtail collection to import into (groups this source; default 'imported')")
   .option("--overwrite", "overwrite files that already exist at the destination")
   .action((file, opts) => cmdImport(file, opts, g()));
 

@@ -50,6 +50,7 @@ export interface SessionMeta {
   version?: string;
   archived?: boolean;
   imported?: boolean;
+  importedFrom?: string;
   programmatic?: boolean;
   origin?: string;
   isSubagent?: boolean;
@@ -74,6 +75,7 @@ export interface SessionHit {
   models?: string[];
   archived?: boolean;
   imported?: boolean;
+  importedFrom?: string;
   programmatic?: boolean;
   origin?: string;
   isSubagent?: boolean;
@@ -93,6 +95,9 @@ export interface Filters {
   until: string;
   kinds: EventKind[];
   mask: boolean;
+  /** Restrict to one imported collection (its name), or "" for every source. An
+   *  orthogonal scope, not a content filter — set via the header source switcher. */
+  source: string;
   /** Treat archived sessions: all (default) | only | none. */
   archived: ArchivedFilter;
   /** Treat programmatic (SDK-driven) sessions: all (default) | only | none. */
@@ -115,6 +120,12 @@ export async function apiFacets(): Promise<{ tools: string[]; cwds: string[]; mo
   return r.json();
 }
 
+/** The imported collections (one per synced person/machine) with a count each. */
+export async function apiSources(): Promise<{ name: string; count: number }[]> {
+  const r = await fetch("/api/sources");
+  return r.json();
+}
+
 export async function apiSessions(f: Partial<Filters>): Promise<SessionMeta[]> {
   const r = await fetch(
     "/api/sessions" +
@@ -122,6 +133,7 @@ export async function apiSessions(f: Partial<Filters>): Promise<SessionMeta[]> {
         agent: f.agents?.join(","),
         project: f.cwds,
         model: f.models,
+        source: f.source || undefined,
         archived: f.archived && f.archived !== "all" ? f.archived : undefined,
         programmatic: f.programmatic && f.programmatic !== "all" ? f.programmatic : undefined,
       }),
@@ -143,6 +155,7 @@ export async function apiSearch(f: Filters, limit: number): Promise<SessionHit[]
         tool: f.tools,
         model: f.models,
         cwd: f.cwds,
+        source: f.source || undefined,
         since: f.since,
         until: f.until,
         kind: f.kinds.join(","),
@@ -153,4 +166,42 @@ export async function apiSearch(f: Filters, limit: number): Promise<SessionHit[]
       }),
   );
   return r.json();
+}
+
+/** Download a bundle of native sessions (for cross-machine sync). With `filters`,
+ *  the server re-runs them unbounded and exports only the matching sessions;
+ *  without, the whole machine. */
+export async function apiExport(filters?: Filters): Promise<Blob> {
+  const r = await fetch("/api/export", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(filters ? { filters } : {}),
+  });
+  if (!r.ok) throw new Error("export failed");
+  return r.blob();
+}
+
+/** Import destination: the view-only agtail store (audit) or the real agent dirs
+ *  (machine migration). */
+export type ImportMode = "agtail" | "native";
+
+/** Upload a bundle. `mode` chooses the destination; `overwrite` replaces existing
+ *  files (else they're skipped, i.e. append-only). */
+export async function apiImport(
+  bundleText: string,
+  opts: { mode: ImportMode; overwrite: boolean; collection?: string },
+): Promise<{ written: number; skipped: number }> {
+  const params = qs({
+    mode: opts.mode,
+    overwrite: opts.overwrite ? "1" : "0",
+    collection: opts.mode === "agtail" ? opts.collection || undefined : undefined,
+  });
+  const r = await fetch("/api/import" + params, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: bundleText,
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data?.error ?? "import failed");
+  return data;
 }

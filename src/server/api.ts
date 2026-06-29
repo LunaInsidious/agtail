@@ -1,11 +1,16 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Agent, ArchivedFilter, ProgrammaticFilter, Session } from "../core/types.js";
-import { isAgent, isEventKind } from "../core/types.js";
+import { AGENTS, isAgent, isEventKind } from "../core/types.js";
 import type { RootOverrides } from "../core/adapters/types.js";
 import { findAllSessions, resolveSession, selectAdapters } from "../core/adapters/index.js";
-import { searchSessionHits } from "../core/search.js";
+import { collectionDir, listCollections } from "../core/imported.js";
+import { walkFiles } from "../core/walk.js";
+import type { SearchFilters } from "../core/search.js";
+import { matchingSessionRefs, searchSessionHits } from "../core/search.js";
 import { aggregateUsage, costForModel, usageSum } from "../core/cost.js";
 import { loadPriceResolver } from "../core/pricing.js";
+import { assertBundle, exportSessions, importSessions } from "../core/transfer.js";
+import { isRecord } from "../core/utils.js";
 import { mask as maskText, maskValue } from "../core/mask.js";
 
 export interface ApiOptions {
@@ -78,12 +83,59 @@ async function computeFacets(ov: RootOverrides): Promise<{ tools: string[]; cwds
   return { tools: [...tools].sort(), cwds: [...cwds].sort(), models: [...models].sort() };
 }
 
+async function readBody(req: IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks).toString("utf-8");
+}
+
+const isJsonlFile = (n: string) => n.endsWith(".jsonl");
+
+/** The import collections (one per synced person/machine) with a session-file
+ *  count each, for the header source switcher. Counts files only (no parse), so
+ *  it's cheap enough to recompute on every load and after an import. */
+async function listSources(): Promise<{ name: string; count: number }[]> {
+  return Promise.all(
+    listCollections().map(async (name) => {
+      const perAgent = await Promise.all(
+        AGENTS.map((a) => walkFiles(collectionDir(name, a), isJsonlFile).then((f) => f.length)),
+      );
+      return { name, count: perAgent.reduce((sum, n) => sum + n, 0) };
+    }),
+  );
+}
+
+const strArray = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+const optStr = (v: unknown): string | undefined => (typeof v === "string" && v ? v : undefined);
+
+/** Build search filters from an untrusted export-request body's `filters` object,
+ *  or null when none is present (= export everything). The same filter dimensions
+ *  the UI applies, re-run server-side and UNBOUNDED so nothing is dropped. */
+function parseExportFilters(body: unknown): SearchFilters | null {
+  if (!isRecord(body) || !isRecord(body.filters)) return null;
+  const f = body.filters;
+  const agents = strArray(f.agents).filter(isAgent);
+  return {
+    pattern: optStr(f.q),
+    agents: agents.length ? agents : undefined,
+    tools: strArray(f.tools),
+    models: strArray(f.models),
+    cwds: strArray(f.cwds),
+    source: optStr(f.source),
+    since: optStr(f.since),
+    until: optStr(f.until),
+    kinds: strArray(f.kinds).filter(isEventKind),
+    archived: parseArchived(optStr(f.archived) ?? null),
+    programmatic: parseProgrammatic(optStr(f.programmatic) ?? null),
+  };
+}
+
 export function createApiHandler(opts: ApiOptions = {}) {
   const ov = opts.overrides ?? {};
   const defaultLimit = opts.searchLimit ?? 500;
   // Facets are a full scan, so compute once and cache for the process lifetime.
   const getFacets = once(() => computeFacets(ov));
-  // LiteLLM price sheet, loaded once.
 
   // eslint-disable-next-line sonarjs/cognitive-complexity -- HTTP route dispatcher: one branch per endpoint; breadth, not nesting depth.
   return async function api(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
@@ -97,13 +149,12 @@ export function createApiHandler(opts: ApiOptions = {}) {
 
     try {
       if (url.pathname === "/api/sessions") {
-        const sessions = await findAllSessions(
-          parseAgents(q.get("agent")),
-          ov,
-          parseArchived(q.get("archived")),
-          parseProgrammatic(q.get("programmatic")),
-          q.getAll("model").filter(Boolean),
-        );
+        const sessions = await findAllSessions(parseAgents(q.get("agent")), ov, {
+          archived: parseArchived(q.get("archived")),
+          programmatic: parseProgrammatic(q.get("programmatic")),
+          models: q.getAll("model").filter(Boolean),
+          source: q.get("source") || undefined,
+        });
         const projs = q
           .getAll("project")
           .filter(Boolean)
@@ -136,6 +187,10 @@ export function createApiHandler(opts: ApiOptions = {}) {
         sendJson(200, await getFacets());
         return true;
       }
+      if (url.pathname === "/api/sources") {
+        sendJson(200, await listSources());
+        return true;
+      }
       if (url.pathname === "/api/search") {
         const matches = await searchSessionHits({
           pattern: q.get("q") ?? undefined,
@@ -145,6 +200,7 @@ export function createApiHandler(opts: ApiOptions = {}) {
           tools: q.getAll("tool").filter(Boolean),
           models: q.getAll("model").filter(Boolean),
           cwds: q.getAll("cwd").filter(Boolean),
+          source: q.get("source") || undefined,
           since: q.get("since") ?? undefined,
           until: q.get("until") ?? undefined,
           kinds: q.get("kind")?.split(",").filter(isEventKind) || undefined,
@@ -155,6 +211,30 @@ export function createApiHandler(opts: ApiOptions = {}) {
           overrides: ov,
         });
         sendJson(200, matches);
+        return true;
+      }
+      if (url.pathname === "/api/export") {
+        // GET (or empty POST) exports everything; a POST {filters:{…}} body
+        // re-runs those filters unbounded and exports only the matching sessions.
+        const body = req.method === "POST" ? await readBody(req) : "";
+        const filters = parseExportFilters(body ? JSON.parse(body) : undefined);
+        const selection = filters ? await matchingSessionRefs({ ...filters, overrides: ov }) : undefined;
+        sendJson(200, await exportSessions({ agents: parseAgents(q.get("agent")), selection }, ov));
+        return true;
+      }
+      if (url.pathname === "/api/import") {
+        const bundle = JSON.parse(await readBody(req));
+        assertBundle(bundle);
+        // Destination is the caller's choice (the UI confirms it): "agtail" =
+        // view-only store (audit), "native" = the real agent dirs (migration).
+        // Default to the safe view-only store on anything unrecognized. The
+        // server is 127.0.0.1-only, so this stays a local, operator-driven write.
+        const mode = q.get("mode") === "native" ? "native" : "agtail";
+        // The collection groups an agtail import (one per synced person/machine);
+        // importSessions sanitizes it. Ignored for native.
+        const collection = q.get("collection") || undefined;
+        const result = await importSessions(bundle, { mode, overwrite: q.get("overwrite") === "1", collection }, ov);
+        sendJson(200, result);
         return true;
       }
       sendJson(404, { error: "unknown endpoint" });

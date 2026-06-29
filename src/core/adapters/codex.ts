@@ -5,7 +5,7 @@ import { iterJsonl } from "../jsonl.js";
 import { hasContent } from "../format.js";
 import { expandHome, mtimeMs, walkFiles } from "../walk.js";
 import { collect, isRecord, obj, str } from "../utils.js";
-import { importStoreDir } from "../imported.js";
+import { collectionDir, collectionOf, listCollections } from "../imported.js";
 import { firstLine } from "./utils.js";
 
 // OpenAI Codex CLI (v0.14x) stores one rollout JSONL per thread under
@@ -253,17 +253,17 @@ export function codexAdapter(rootOverride?: string): Adapter {
   // them, so we tag by path prefix — that also covers reads via resolveSession.
   const archivedRoot = join(dirname(root), "archived_sessions");
   const isArchived = (p: string) => p === archivedRoot || p.startsWith(archivedRoot + sep);
-  // The agtail import store mirrors the native layout; sessions found under it
-  // are tagged imported by path prefix, same mechanism as archived.
-  const isImported = (p: string) => {
-    const store = importStoreDir("codex");
-    return p === store || p.startsWith(store + sep);
-  };
 
   const read = async (path: string): Promise<Session> => {
     const sess = await readSession(path);
     if (isArchived(path)) sess.archived = true;
-    if (isImported(path)) sess.imported = true;
+    // The agtail import store mirrors the native layout; a session under it is
+    // tagged imported + the collection (first path segment) it came from.
+    const col = collectionOf(path);
+    if (col) {
+      sess.imported = true;
+      sess.importedFrom = col;
+    }
     return sess;
   };
 
@@ -286,12 +286,9 @@ export function codexAdapter(rootOverride?: string): Adapter {
     base: dirname(root),
     roots: () => [root, archivedRoot],
     async findSessions(): Promise<SessionMeta[]> {
-      const [active, archived, imported] = await Promise.all([
-        scan(root),
-        scan(archivedRoot),
-        scan(importStoreDir("codex")),
-      ]);
-      return [...active, ...archived, ...imported];
+      const imported = listCollections().map((c) => scan(collectionDir(c, "codex")));
+      const lists = await Promise.all([scan(root), scan(archivedRoot), ...imported]);
+      return lists.flat();
     },
     transferFiles: async () => {
       const [active, archived] = await Promise.all([walkFiles(root, isRollout), walkFiles(archivedRoot, isRollout)]);

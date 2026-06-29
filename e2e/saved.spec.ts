@@ -31,6 +31,22 @@ test("save a search, recall it, and the button reflects the active match", async
   await expect(input).toHaveValue("blogsync");
 });
 
+test("the save-name flow can be cancelled", async ({ page }) => {
+  await page.goto("/");
+  await page.locator(".sess").first().waitFor();
+  await page.locator(".searchbox input[type=search]").fill("blogsync");
+  await page.keyboard.press("Escape");
+
+  await savedButton(page).click();
+  await page.locator(".savecur").click(); // open the inline name field
+  await expect(page.locator(".naming .nameinput")).toBeVisible();
+  await page.locator(".naming").getByRole("button", { name: "Cancel" }).click();
+  // Back to the "Save current search" button; nothing was saved.
+  await expect(page.locator(".naming")).toHaveCount(0);
+  await expect(page.locator(".savecur")).toBeVisible();
+  await expect(page.locator(".savedapply")).toHaveCount(0);
+});
+
 test("identical conditions can't be saved twice", async ({ page }) => {
   await page.goto("/");
   await page.locator(".sess").first().waitFor();

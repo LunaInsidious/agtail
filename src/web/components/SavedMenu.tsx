@@ -75,6 +75,15 @@ export function SavedMenu({
           <button type="button" className="namesave" onClick={commitSave}>
             Save
           </button>
+          <button
+            type="button"
+            className="xfile"
+            onClick={() => setNamingDraft(null)}
+            aria-label="Cancel"
+            title="Cancel"
+          >
+            ✕
+          </button>
         </div>
       )}
       <button type="button" className="savemanage" onClick={openManage}>

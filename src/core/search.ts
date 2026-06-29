@@ -8,7 +8,7 @@ import type {
   Session,
   SessionHit,
 } from "./types.js";
-import { matchArchived, matchProgrammatic } from "./types.js";
+import { matchArchived, matchProgrammatic, matchSource } from "./types.js";
 import type { Adapter, RootOverrides } from "./adapters/types.js";
 import { selectAdapters } from "./adapters/index.js";
 import { toolSearchText } from "./format.js";
@@ -35,6 +35,9 @@ export interface SearchFilters {
   /** Restrict to these event kinds. */
   kinds?: EventKind[];
   mask?: boolean;
+  /** Restrict to one import collection by name (its `importedFrom`). Empty/absent
+   *  = every source (local + all imports). */
+  source?: string;
   /** Treat archived sessions: include all (default), only, or exclude. */
   archived?: ArchivedFilter;
   /** Treat programmatic (SDK-driven) sessions: include all (default), only, exclude. */
@@ -166,6 +169,7 @@ export async function* searchSessions(f: SearchFilters): AsyncGenerator<Match> {
     for (const meta of metas) {
       if (!matchArchived(meta, f.archived) || !matchProgrammatic(meta, f.programmatic)) continue;
       if (!matchModels(meta, f.models)) continue;
+      if (!matchSource(meta, f.source)) continue;
       if (!cwdMatches(meta.cwd, ctx.cwdNeedles)) continue;
       const session = await tryReadSession(adapter, meta.path);
       if (!session) continue;
@@ -194,6 +198,14 @@ export async function search(f: SearchFilters): Promise<Match[]> {
   return collect(searchSessions(f));
 }
 
+/** The sessions matching these filters, as agent+path refs — UNBOUNDED (limit is
+ *  forced off) so callers like export never silently drop matches past a display
+ *  cap. Empty/absent filters still scan, returning every non-empty session. */
+export async function matchingSessionRefs(f: SearchFilters): Promise<Pick<SessionHit, "agent" | "path">[]> {
+  const hits = await searchSessionHits({ ...f, limit: 0 });
+  return hits.map((h) => ({ agent: h.agent, path: h.path }));
+}
+
 /** Session-level search: one entry per matching session, with a representative
  *  snippet and match count. `limit` bounds the number of sessions returned. */
 // eslint-disable-next-line sonarjs/cognitive-complexity -- session-level scorer: accumulates per-kind match metadata in a single pass over each session.
@@ -206,6 +218,7 @@ export async function searchSessionHits(f: SearchFilters): Promise<SessionHit[]>
     for (const meta of metas) {
       if (!matchArchived(meta, f.archived) || !matchProgrammatic(meta, f.programmatic)) continue;
       if (!matchModels(meta, f.models)) continue;
+      if (!matchSource(meta, f.source)) continue;
       if (!cwdMatches(meta.cwd, ctx.cwdNeedles)) continue;
       const session = await tryReadSession(adapter, meta.path);
       if (!session) continue;
@@ -228,6 +241,7 @@ export async function searchSessionHits(f: SearchFilters): Promise<SessionHit[]>
         models: meta.models,
         archived: meta.archived,
         imported: meta.imported,
+        importedFrom: meta.importedFrom,
         programmatic: meta.programmatic,
         origin: meta.origin,
         isSubagent: meta.isSubagent,

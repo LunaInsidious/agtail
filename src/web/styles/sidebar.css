@@ -25,11 +25,40 @@ main {
   z-index: 2;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
-  padding: 8px;
-  text-align: center;
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   font-family: var(--mono);
   font-size: 12px;
   color: var(--tool);
+}
+.lhlabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+/* Export: a quiet labeled text button on the list header (the count beside it is
+   the scope). Tints on hover. */
+.lhbtn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1;
+  padding: 3px 7px;
+  border-radius: var(--rad);
+}
+.lhbtn:hover {
+  color: var(--tool);
+  background: var(--panel2);
 }
 
 /* scroll-margin keeps a row clear of the sticky list header when scrolled to the top. */

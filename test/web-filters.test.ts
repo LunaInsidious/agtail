@@ -12,6 +12,7 @@ const base: Filters = {
   until: "",
   kinds: [],
   mask: false,
+  source: "",
   archived: "all",
   programmatic: "all",
 };

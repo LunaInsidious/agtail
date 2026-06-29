@@ -44,8 +44,8 @@ function SessionRow({
           </span>
         )}
         {s.imported && (
-          <span className="archmark" title="imported from another machine">
-            📥 imported
+          <span className="archmark" title={`imported from ${s.importedFrom ?? "another machine"}`}>
+            📥 {s.importedFrom ?? "imported"}
           </span>
         )}
         {s.programmatic && (
@@ -157,8 +157,8 @@ function HitRow({
           </span>
         )}
         {m.imported && (
-          <span className="archmark" title="imported from another machine">
-            📥 imported
+          <span className="archmark" title={`imported from ${m.importedFrom ?? "another machine"}`}>
+            📥 {m.importedFrom ?? "imported"}
           </span>
         )}
         {m.programmatic && (
