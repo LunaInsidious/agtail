@@ -222,6 +222,10 @@ main {
 .meta .automark {
   font-size: 11px;
 }
+/* The plugin that spawned an SDK session (inferred), shown inside the 🤖 badge. */
+.spawnby {
+  opacity: 0.85;
+}
 .branch {
   color: var(--think);
 }

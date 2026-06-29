@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { fileURLToPath } from "node:url";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { claudeCodeAdapter } from "../src/core/adapters/claude-code.js";
 import { aggregateUsage } from "../src/core/cost.js";
 
@@ -20,6 +23,24 @@ describe("claude-code adapter", () => {
     const p = fileURLToPath(new URL("./fixtures/claude-command.jsonl", import.meta.url));
     const sess = await claudeCodeAdapter().readSession(p);
     expect(sess.title).toBe("/stickers");
+  });
+
+  it("titles by the first line even when the body contains 'tool_result' (e.g. a diff under review)", async () => {
+    // The boilerplate guard must look at the first line only — a real prompt whose
+    // body mentions tool_result (reviewing code that has it) must keep its title.
+    const dir = await mkdtemp(join(tmpdir(), "agtail-title-"));
+    const file = join(dir, "rev.jsonl");
+    const body = 'Review this change for security vulnerabilities.\\n\\n=== DIFF ===\\n+ kind: \\"tool_result\\"';
+    await writeFile(
+      file,
+      `{"type":"user","timestamp":"2026-06-28T00:00:00.000Z","message":{"role":"user","content":"${body}"}}\n`,
+    );
+    try {
+      const sess = await claudeCodeAdapter().readSession(file);
+      expect(sess.title).toBe("Review this change for security vulnerabilities.");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("keeps thinking with content but drops empty (signature-only) blocks", async () => {
@@ -71,12 +92,20 @@ describe("claude-code adapter", () => {
   it("surfaces Stop-summary and per-event hook attachments as hook events", async () => {
     const sess = await claudeCodeAdapter().readSession(hookFixture);
     const hooks = sess.events.filter((e) => e.kind === "hook");
-    const byType = new Map(hooks.map((h) => [h.hookEvent, h]));
-    // Stop summary (hookInfos) + PostToolUse success + SessionStart error.
-    expect(byType.get("Stop")?.text).toContain("security_reminder_hook.py");
-    expect(byType.get("Stop")?.text).toContain("33ms");
-    expect(byType.get("PostToolUse")?.text).toContain("PostToolUse:Write");
-    const err = byType.get("SessionStart");
+    // Stop summary (hookInfos): lists the hook scripts + total duration.
+    const stop = hooks.find((h) => h.hookEvent === "Stop");
+    expect(stop?.text).toContain("security_reminder_hook.py");
+    expect(stop?.text).toContain("33ms");
+    // PostToolUse success: resolves its triggering tool via toolUseID, text names
+    // the hook script (the in-transcript plugin hint).
+    const post = hooks.find((h) => h.hookEvent === "PostToolUse" && h.text?.includes("sg-python.sh"));
+    expect(post?.tool).toBe("Write");
+    // hook_additional_context surfaces the injected text (not a bare "+context").
+    const ctx = hooks.find((h) => h.text?.includes("+context"));
+    expect(ctx?.tool).toBe("Edit");
+    expect(ctx?.text).toContain("scan warning: took longer");
+    // Non-blocking error keeps the error message.
+    const err = hooks.find((h) => h.hookEvent === "SessionStart");
     expect(err?.text).toContain("✗");
     expect(err?.text).toContain("semgrep");
   });

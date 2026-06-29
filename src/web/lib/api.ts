@@ -26,6 +26,9 @@ export interface Event {
   input?: unknown;
   result?: { isError: boolean; text: string };
   hookEvent?: string;
+  // Hook command + the plugin it belongs to (resolved by the server, local only).
+  command?: string;
+  plugin?: string;
   model?: string;
   usage?: Partial<Usage>;
   raw?: unknown;
@@ -53,6 +56,8 @@ export interface SessionMeta {
   importedFrom?: string;
   programmatic?: boolean;
   origin?: string;
+  /** For an SDK-spawned session: the plugin that launched it (inferred). */
+  spawnedBy?: string;
   isSubagent?: boolean;
   parentId?: string;
   agentName?: string;
@@ -78,6 +83,7 @@ export interface SessionHit {
   importedFrom?: string;
   programmatic?: boolean;
   origin?: string;
+  spawnedBy?: string;
   isSubagent?: boolean;
   parentId?: string;
   agentName?: string;

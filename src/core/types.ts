@@ -84,6 +84,12 @@ export interface Event {
   // kind === "hook": the lifecycle event it fired on (SessionStart, PreToolUse,
   // PostToolUse, Stop, …) — used to group/toggle hooks by type.
   hookEvent?: string;
+  // The hook's configured command (from the transcript), and the plugin it
+  // belongs to. `plugin` is resolved at display time by matching `command`
+  // against the locally-installed plugins (see core/plugins.ts) — so it's only
+  // present for sessions whose plugins are installed on this machine.
+  command?: string;
+  plugin?: string;
 
   // assistant accounting (used by cost aggregation)
   model?: string;
@@ -132,6 +138,10 @@ export interface SessionMeta {
   // Claude's entrypoint ("sdk-py"/"sdk-ts") or Codex's originator. The
   // transcript records HOW it was launched, not which specific tool/plugin.
   origin?: string;
+  // For an SDK-spawned session: the plugin that launched it, inferred at display
+  // time by matching the session's prompt to that plugin's review-prompt template
+  // (the transcript records no direct link). Local installs only; see plugins.ts.
+  spawnedBy?: string;
 
   // Subagent (sidechain) linkage. A subagent transcript is a child of the
   // session that spawned it via a Task tool call.
@@ -175,6 +185,7 @@ export interface SessionHit {
   importedFrom?: string;
   programmatic?: boolean;
   origin?: string;
+  spawnedBy?: string; // plugin behind an SDK-spawned session (attached by the API)
   // Subagent linkage, so search results can nest a matched child under its
   // matched parent (and show an unmatched-parent child standalone).
   isSubagent?: boolean;

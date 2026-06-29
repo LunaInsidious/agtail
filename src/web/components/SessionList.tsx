@@ -51,6 +51,12 @@ function SessionRow({
         {s.programmatic && (
           <span className="automark" title={PROGRAMMATIC_TIP}>
             🤖 {originLabel(s.origin)}
+            {s.spawnedBy && (
+              <span className="spawnby" title={`spawned by the ${s.spawnedBy} plugin`}>
+                {" "}
+                · 🧩 {s.spawnedBy}
+              </span>
+            )}
           </span>
         )}
         {s.isSubagent && s.agentName && <span className="agentname">{s.agentName}</span>}
@@ -164,6 +170,12 @@ function HitRow({
         {m.programmatic && (
           <span className="automark" title={PROGRAMMATIC_TIP}>
             🤖 {originLabel(m.origin)}
+            {m.spawnedBy && (
+              <span className="spawnby" title={`spawned by the ${m.spawnedBy} plugin`}>
+                {" "}
+                · 🧩 {m.spawnedBy}
+              </span>
+            )}
           </span>
         )}
         {m.isSubagent && m.agentName && <span className="agentname">{m.agentName}</span>}

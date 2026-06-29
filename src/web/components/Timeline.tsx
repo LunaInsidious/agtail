@@ -156,6 +156,11 @@ export const Timeline = memo(function Timeline({
           {session.programmatic && (
             <span className="automark" title={PROGRAMMATIC_TIP}>
               🤖 {originLabel(session.origin)}
+              {session.spawnedBy && (
+                <span className="spawnby" title={`spawned by the ${session.spawnedBy} plugin`}>
+                  · 🧩 {session.spawnedBy}
+                </span>
+              )}
             </span>
           )}
           {session.isSubagent && (

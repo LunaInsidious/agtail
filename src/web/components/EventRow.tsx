@@ -176,7 +176,17 @@ function HookRow({ e, highlight }: { e: Event; highlight?: string }) {
       <div className="body">
         <div className={"toolhead" + (open ? " open" : "")} onClick={() => setOpen((o) => !o)}>
           <span className="caret">{open ? "▾" : "▸"}</span>
-          <span className="role">hook</span>
+          <span className="role">{e.hookEvent ?? "hook"}</span>
+          {e.plugin && (
+            <span className="hookplugin" title={`from the ${e.plugin} plugin`}>
+              🧩 {e.plugin}
+            </span>
+          )}
+          {e.tool && (
+            <span className="hooktool" title={`triggered by ${e.tool}`}>
+              🔧 {e.tool}
+            </span>
+          )}
           <span className="sum">
             <Highlighted text={e.text ?? ""} term={highlight} />
           </span>

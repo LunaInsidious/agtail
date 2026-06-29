@@ -94,25 +94,47 @@ function attachmentEvent(line: Record<string, unknown>, ts: string | undefined, 
   const atype = str(att.type);
   if (HOOK_ATTACH.has(atype)) {
     const hookEvent = str(att.hookEvent) || "hook";
-    const name = str(att.hookName) || hookEvent;
-    const cmd = att.command != null ? ` · ${scriptNames(str(att.command))}` : "";
+    // The configured-hook label: the matcher part of "Event:matcher" (e.g.
+    // "Bash", "startup"). The lifecycle event is surfaced separately as hookEvent,
+    // and the concrete triggering tool via toolUseId, so the text stays short.
+    const matcher = str(att.hookName).split(":").slice(1).join(":");
+    const scripts = att.command != null ? scriptNames(str(att.command)) : "";
     const ms = att.durationMs != null && str(att.durationMs) !== "" ? ` (${str(att.durationMs)}ms)` : "";
-    return { kind: "hook", ts, hookEvent, text: hookText(atype, { name, cmd, ms, att }), sidechain, raw: line };
+    return {
+      kind: "hook",
+      ts,
+      hookEvent,
+      // PreToolUse/PostToolUse carry the id of the tool_use that triggered them;
+      // resolved to the tool name in readSession (see withHookTools).
+      toolUseId: str(att.toolUseID) || undefined,
+      // The full command, kept so the display layer can resolve which plugin it
+      // belongs to (core/plugins.ts).
+      command: str(att.command) || undefined,
+      text: hookText(atype, { label: scripts || matcher, ms, att }),
+      sidechain,
+      raw: line,
+    };
   }
   return { kind: "unknown", ts, text: atype ? `attachment · ${atype}` : "attachment", sidechain, raw: line };
 }
 
-/** The display line for a hook attachment, keyed by its subtype. */
-function hookText(atype: string, p: { name: string; cmd: string; ms: string; att: Record<string, unknown> }): string {
-  const { name, cmd, ms, att } = p;
+/** The display line for a hook attachment, keyed by its subtype. `label` is the
+ *  hook's script (preferred) or its matcher. */
+function hookText(atype: string, p: { label: string; ms: string; att: Record<string, unknown> }): string {
+  const { label, ms, att } = p;
   if (atype === "hook_non_blocking_error") {
     const err = str(att.stderr).split("\n").find(Boolean) || `exit ${str(att.exitCode)}`;
-    return `✗ ${name}${cmd} — ${err}`;
+    return `✗ ${label} — ${err}`;
   }
-  if (atype === "hook_cancelled") return `⊘ ${name} cancelled`;
-  if (atype === "async_hook_response") return `⤳ async ${name}`;
-  if (atype === "hook_additional_context") return `${name} · +context`;
-  return `${name}${cmd}${ms}`;
+  if (atype === "hook_cancelled") return `⊘ ${label} cancelled`;
+  if (atype === "async_hook_response") return `⤳ async ${label}`;
+  if (atype === "hook_additional_context") {
+    // The point of this kind is the text it injected back into the session, so
+    // show that rather than the (command-less) matcher.
+    const ctx = firstLine(textFromContent(att.content));
+    return ctx ? `+context · ${ctx}` : `${label} · +context`;
+  }
+  return `${label}${ms}`;
 }
 
 /** Normalize one transcript line into zero or more events. seenUsage dedups
@@ -244,6 +266,17 @@ function mergeToolResults(events: Event[]): Event[] {
   return merged;
 }
 
+/** Resolve each tool-triggered hook to the tool that fired it: PreToolUse/
+ *  PostToolUse carry the triggering tool_use's id, so look up its tool name (the
+ *  matcher in hookName can be a glob like "*", so the concrete tool is better). */
+function withHookTools(events: Event[]): Event[] {
+  const toolById = new Map<string, string>();
+  for (const e of events) if (e.kind === "tool_use" && e.toolUseId && e.tool) toolById.set(e.toolUseId, e.tool);
+  return events.map((e) =>
+    e.kind === "hook" && e.toolUseId && !e.tool ? { ...e, tool: toolById.get(e.toolUseId) } : e,
+  );
+}
+
 // A subagent transcript lives under <parentId>/subagents/ with a sibling
 // agent-<id>.meta.json describing the spawning Task call. Task subagents sit
 // directly in subagents/; Workflow ones nest deeper (subagents/workflows/wf_*/).
@@ -278,14 +311,18 @@ function readSubagentInfo(path: string): SubagentInfo {
 }
 
 /** A title derived from a user message: the slash-command name if present, else
- *  the first line — skipping injected boilerplate (caveats / tool_result). */
+ *  the first line — skipping injected boilerplate (caveats / tool_result). The
+ *  boilerplate markers are checked on the FIRST LINE only: a real prompt whose
+ *  body happens to contain "tool_result" (e.g. a diff under review) must still be
+ *  titled by its opening line, not discarded. */
 function titleFromUser(msg: Record<string, unknown>): string | undefined {
   const t = textFromContent(msg.content).trim();
   // A slash-command invocation (e.g. "/stickers") titles by the command name.
   const cmd = t.match(/<command-name>([^<]+)<\/command-name>/);
   if (cmd?.[1] != null) return cmd[1].trim();
-  if (t && !t.startsWith("[") && !t.startsWith("<local-command-caveat>") && !t.includes("tool_result")) {
-    return firstLine(t);
+  const head = firstLine(t);
+  if (head && !head.startsWith("[") && !head.startsWith("<local-command-caveat>") && !head.includes("tool_result")) {
+    return head;
   }
   return undefined;
 }
@@ -337,7 +374,7 @@ async function readSession(path: string): Promise<Session> {
     for (const e of normalizeLine(line, seenUsage)) raw.push(e);
   }
 
-  const events = mergeToolResults(raw);
+  const events = withHookTools(mergeToolResults(raw));
   const { entrypoint, models } = meta;
   // Machine-driven sessions: launched via the Agent SDK (entrypoint "sdk-cli"/
   // "sdk-py"/…), carrying a programmatically-submitted turn (promptSource

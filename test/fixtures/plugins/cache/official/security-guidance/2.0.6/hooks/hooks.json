@@ -1,0 +1,16 @@
+{
+  "description": "Security guidance hooks",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/sg-python.sh\"" }]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/session-start-hook.sh\"" }]
+      }
+    ]
+  }
+}

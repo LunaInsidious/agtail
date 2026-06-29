@@ -9,6 +9,8 @@ import type { SearchFilters } from "../core/search.js";
 import { matchingSessionRefs, searchSessionHits } from "../core/search.js";
 import { aggregateUsage, costForModel, usageSum } from "../core/cost.js";
 import { loadPriceResolver } from "../core/pricing.js";
+import type { PluginResolver } from "../core/plugins.js";
+import { loadPluginResolver } from "../core/plugins.js";
 import { assertBundle, exportSessions, importSessions } from "../core/transfer.js";
 import { isRecord } from "../core/utils.js";
 import { mask as maskText, maskValue } from "../core/mask.js";
@@ -81,6 +83,18 @@ async function computeFacets(ov: RootOverrides): Promise<{ tools: string[]; cwds
     for (const s of sessions) for (const e of s.events) if (e.kind === "tool_use" && e.tool) tools.add(e.tool);
   }
   return { tools: [...tools].sort(), cwds: [...cwds].sort(), models: [...models].sort() };
+}
+
+/** The plugin that spawned an SDK session, by matching its prompt to a plugin's
+ *  review-prompt template. `text` is the session's first user prompt (or, for the
+ *  list where events aren't loaded, its title). Only for programmatic SDK sessions. */
+function spawnerOf(
+  meta: { programmatic?: boolean; origin?: string },
+  text: string | undefined,
+  plugin: PluginResolver,
+) {
+  if (!meta.programmatic || !meta.origin?.startsWith("sdk") || !text) return undefined;
+  return plugin.forPrompt(text);
 }
 
 async function readBody(req: IncomingMessage): Promise<string> {
@@ -159,9 +173,18 @@ export function createApiHandler(opts: ApiOptions = {}) {
           .getAll("project")
           .filter(Boolean)
           .map((p) => p.toLowerCase());
+        const matched = projs.length
+          ? sessions.filter((m) => projs.some((p) => (m.cwd ?? "").toLowerCase().includes(p)))
+          : sessions;
+        // Tag SDK-spawned sessions with the plugin behind them (matched on the
+        // title, which is the prompt's first line). Cheap; the index is cached.
+        const plugin = await loadPluginResolver();
         sendJson(
           200,
-          projs.length ? sessions.filter((m) => projs.some((p) => (m.cwd ?? "").toLowerCase().includes(p))) : sessions,
+          matched.map((m) => {
+            const spawnedBy = spawnerOf(m, m.title, plugin);
+            return spawnedBy ? { ...m, spawnedBy } : m;
+          }),
         );
         return true;
       }
@@ -176,11 +199,17 @@ export function createApiHandler(opts: ApiOptions = {}) {
         const out = doMask ? maskSession(sess) : sess;
         // Pass the session's models so a brand-new one triggers a price refresh.
         const resolve = await loadPriceResolver(out.models ?? (out.model ? [out.model] : []));
-        // Attach per-turn tokens/cost to events that carry usage.
-        const events = out.events.map((e) =>
-          e.usage ? { ...e, tokens: usageSum(e.usage), cost: costForModel(e.usage, e.model, resolve) } : e,
-        );
-        sendJson(200, { ...out, events, usage: aggregateUsage(out.events, resolve) });
+        // Resolve which plugin each hook's command belongs to (local install only).
+        const plugin = await loadPluginResolver();
+        // Attach per-turn tokens/cost to usage events, and the plugin to hooks.
+        const events = out.events.map((e) => {
+          if (e.usage) return { ...e, tokens: usageSum(e.usage), cost: costForModel(e.usage, e.model, resolve) };
+          if (e.kind === "hook" && e.command) return { ...e, plugin: plugin.forCommand(e.command) };
+          return e;
+        });
+        const firstUser = out.events.find((e) => e.kind === "text" && e.role === "user" && e.text)?.text;
+        const spawnedBy = spawnerOf(out, firstUser, plugin);
+        sendJson(200, { ...out, events, usage: aggregateUsage(out.events, resolve), spawnedBy });
         return true;
       }
       if (url.pathname === "/api/facets") {
@@ -210,7 +239,16 @@ export function createApiHandler(opts: ApiOptions = {}) {
           limit: q.get("limit") ? Number(q.get("limit")) : defaultLimit,
           overrides: ov,
         });
-        sendJson(200, matches);
+        // Tag SDK-spawned hits with their plugin (matched on the title), so the
+        // Results list shows it just like the browse list does.
+        const plugin = await loadPluginResolver();
+        sendJson(
+          200,
+          matches.map((h) => {
+            const spawnedBy = spawnerOf(h, h.title, plugin);
+            return spawnedBy ? { ...h, spawnedBy } : h;
+          }),
+        );
         return true;
       }
       if (url.pathname === "/api/export") {

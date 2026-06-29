@@ -10,6 +10,7 @@ import { listCollections } from "../core/imported.js";
 import { matchingSessionRefs, search, searchSessions } from "../core/search.js";
 import { aggregateUsage, costForModel, usageSum } from "../core/cost.js";
 import { loadPriceResolver } from "../core/pricing.js";
+import { loadPluginResolver } from "../core/plugins.js";
 import { displayRole, isHumanMessage, summarizeInput } from "../core/format.js";
 import { mask as maskText, maskValue } from "../core/mask.js";
 import { color, shortTs } from "./colors.js";
@@ -173,6 +174,7 @@ async function cmdShow(id: string, opts: ShowOpts, global: GlobalOpts) {
   );
   console.log();
   const resolve = await loadPriceResolver(sess.models);
+  const plugin = await loadPluginResolver();
   // Per-turn token/cost badge for events carrying usage.
   const usageBadge = (e: (typeof sess.events)[number]) => {
     if (!e.usage) return "";
@@ -202,7 +204,9 @@ async function cmdShow(id: string, opts: ShowOpts, global: GlobalOpts) {
         `${ts} ${sc}${color("thinking", "violet")} ${color((e.text ?? "").slice(0, 120).replace(/\n/g, " "), "dim")}`,
       );
     } else if (e.kind === "hook") {
-      console.log(`${ts} ${sc}${color("🪝 " + (e.text ?? ""), "amber")}`);
+      const plug = e.command ? plugin.forCommand(e.command) : undefined;
+      const head = `${e.hookEvent ?? "hook"}${plug ? ` [${plug}]` : ""}${e.tool ? ` ${e.tool}` : ""}`;
+      console.log(`${ts} ${sc}${color("🪝 " + head, "violet")}  ${color(e.text ?? "", "amber")}`);
     } else if (e.kind === "summary") {
       console.log(`${ts} ${color("— " + (e.text ?? ""), "gray")}`);
     } else if (e.kind === "system") {
