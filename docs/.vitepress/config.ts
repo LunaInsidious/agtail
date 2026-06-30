@@ -68,6 +68,8 @@ export default defineConfig({
   // GitHub Pages project site: published under https://<owner>.github.io/agtail/.
   // VitePress prepends this base to absolute asset/link URLs (e.g. /screenshots/*).
   base: "/agtail/",
+  // base-prefixed because VitePress does not rewrite arbitrary head hrefs.
+  head: [["link", { rel: "icon", type: "image/svg+xml", href: "/agtail/favicon.svg" }]],
   cleanUrls: true,
   themeConfig: {
     search: { provider: "local" },
