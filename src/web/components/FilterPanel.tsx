@@ -6,9 +6,31 @@ import { CheckList } from "./CheckList.js";
 // The filters popover: tool/model/project checklists, date range, agent /
 // status / origin toggles, mask toggle, max-results select, and Clear-all.
 // Presentational — all state and handlers live in the App container.
+// The facet-driven checklists' labels are known ahead of their options, so the
+// skeleton shows them in place — only the option rows fill in on load, no shift.
+const FACET_LABELS = ["tool", "model", "project (cwd)"];
+
+function FacetSkeleton() {
+  return (
+    <>
+      {FACET_LABELS.map((label) => (
+        <div className="frow" key={label} aria-busy="true">
+          <span className="lbl">{label}</span>
+          <div className="checklist skeleton">
+            {[0, 1, 2].map((i) => (
+              <span key={i} className="skel-line" />
+            ))}
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
 export function FilterPanel({
   filters,
   facets,
+  facetsLoading,
   limit,
   setLimit,
   set,
@@ -19,6 +41,7 @@ export function FilterPanel({
 }: {
   filters: Filters;
   facets: { tools: string[]; cwds: string[]; models: string[] };
+  facetsLoading: boolean;
   limit: number;
   setLimit: (n: number) => void;
   set: (p: Partial<Filters>) => void;
@@ -27,8 +50,12 @@ export function FilterPanel({
   clearAll: () => void;
   chipCount: number;
 }) {
+  // Skeleton only on the first load (facets still empty); a post-import refresh
+  // keeps the populated lists rather than flashing placeholders over them.
+  const facetsEmpty = !facets.tools.length && !facets.models.length && !facets.cwds.length;
   return (
     <div className="filterpop">
+      {facetsLoading && facetsEmpty && <FacetSkeleton />}
       <CheckList
         label="tool"
         options={[

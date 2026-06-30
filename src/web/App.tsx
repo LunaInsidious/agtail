@@ -29,7 +29,7 @@ export function App() {
   // Bumped after an import to soft-refresh the lists (no full page reload).
   const [refreshNonce, setRefreshNonce] = useState(0);
   // Facets (filter options) + imported sources (switcher), loaded on demand.
-  const { facets, sources } = useLookups(showFilters, refreshNonce);
+  const { facets, sources, facetsLoading } = useLookups(showFilters, refreshNonce);
   const set = (p: Partial<Filters>) => setFilters((f) => ({ ...f, ...p }));
 
   // A content search (query / tool / date / kind) produces snippets; attribute
@@ -369,6 +369,7 @@ export function App() {
             <FilterPanel
               filters={filters}
               facets={facets}
+              facetsLoading={facetsLoading}
               limit={limit}
               setLimit={setLimit}
               set={set}

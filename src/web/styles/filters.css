@@ -561,6 +561,39 @@
 .checklist label.on {
   color: var(--text);
 }
+.checklist.skeleton {
+  gap: 7px;
+  padding: 8px;
+}
+.skel-line {
+  height: 12px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--panel2) 25%, var(--border) 50%, var(--panel2) 75%);
+  background-size: 280% 100%;
+  animation: skel-shimmer 1.3s ease-in-out infinite;
+}
+.skel-line:nth-child(1) {
+  width: 82%;
+}
+.skel-line:nth-child(2) {
+  width: 56%;
+}
+.skel-line:nth-child(3) {
+  width: 70%;
+}
+@keyframes skel-shimmer {
+  from {
+    background-position: 140% 0;
+  }
+  to {
+    background-position: -40% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skel-line {
+    animation: none;
+  }
+}
 .filterpop .dates {
   display: flex;
   gap: 6px;
