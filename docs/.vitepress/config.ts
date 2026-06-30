@@ -1,8 +1,13 @@
 import { defineConfig } from "vitepress";
 
+// The playground is a separate static app deployed alongside the docs (not a
+// VitePress route), so it's linked by its full published URL.
+const PLAYGROUND_URL = "https://lunainsidious.github.io/agtail/playground/";
+
 const enNav = [
   { text: "Guide", link: "/guide/getting-started" },
   { text: "Reference", link: "/reference/cli" },
+  { text: "Playground", link: PLAYGROUND_URL },
 ];
 
 const enSidebar = [
@@ -34,6 +39,7 @@ const enSidebar = [
 const jaNav = [
   { text: "ガイド", link: "/ja/guide/getting-started" },
   { text: "リファレンス", link: "/ja/reference/cli" },
+  { text: "Playground", link: PLAYGROUND_URL },
 ];
 
 const jaSidebar = [

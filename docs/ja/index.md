@@ -12,6 +12,9 @@ hero:
     - theme: alt
       text: コンセプト
       link: /ja/guide/concepts
+    - theme: alt
+      text: Playground を試す
+      link: https://lunainsidious.github.io/agtail/playground/
 
 features:
   - title: 検索優先

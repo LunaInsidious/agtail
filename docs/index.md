@@ -12,6 +12,9 @@ hero:
     - theme: alt
       text: Concepts
       link: /guide/concepts
+    - theme: alt
+      text: Try the playground
+      link: https://lunainsidious.github.io/agtail/playground/
 
 features:
   - title: Search-first
