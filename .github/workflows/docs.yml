@@ -13,11 +13,10 @@ on:
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
-# Pages deployment needs these; contents:read is enough to checkout.
+# Default to read-only; the write scopes Pages needs are granted to the deploy
+# job alone (the build job only checks out and uploads an artifact).
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 # Let one Pages deploy finish rather than cancelling it; queue the next.
 concurrency:
@@ -37,10 +36,12 @@ jobs:
           cache: pnpm
       - uses: actions/configure-pages@v5
       # docs/ is its own pnpm project with its own committed lockfile.
+      # --ignore-scripts: VitePress needs no package lifecycle scripts, so block
+      # transitive postinstall scripts from running in CI (supply-chain hardening).
       - name: Install & build docs
         working-directory: docs
         run: |
-          pnpm install --frozen-lockfile
+          pnpm install --frozen-lockfile --ignore-scripts
           pnpm build
       - uses: actions/upload-pages-artifact@v3
         with:
@@ -49,6 +50,10 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    # Only the deploy step needs to mint an OIDC token and write to Pages.
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
