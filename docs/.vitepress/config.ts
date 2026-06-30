@@ -65,6 +65,9 @@ const jaSidebar = [
 export default defineConfig({
   title: "agtail",
   description: "Cross-agent forensic search for coding-agent histories",
+  // GitHub Pages project site: published under https://<owner>.github.io/agtail/.
+  // VitePress prepends this base to absolute asset/link URLs (e.g. /screenshots/*).
+  base: "/agtail/",
   cleanUrls: true,
   themeConfig: {
     search: { provider: "local" },
