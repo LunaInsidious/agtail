@@ -32,6 +32,8 @@ Claude Desktop and the Codex app can both browse your local sessions. agtail sti
 - **Cross-agent search** — grep every session across tools and projects at once
 - **CLI / automation** — pipe `agtail grep ... | ...`, run it from CI
 - **Tool-axis analysis** — "how many Bash runs this week, which files saw the most Writes"
+- **Hook & plugin forensics** — hook firings as searchable events, attributed to the plugin that owns them ([Adapters](./adapters))
+- **Cross-machine audit** — export/import into named collections to review several machines or people in one viewer ([Cross-machine sync](./sync))
 - **Freedom to transform / export** — masking, JSONL projection
 
 **What it leaves to the official apps (and won't compete on):**

@@ -29,6 +29,7 @@ List sessions, newest first. Source-tagged (claude / codex), with subagents nest
 agtail list
 agtail list --agent codex
 agtail list --project myproject
+agtail list --source alice          # only an imported collection (see below)
 ```
 
 ## show
@@ -52,6 +53,20 @@ agtail stats                # all sessions
 agtail stats --project foo
 ```
 
+## export / import / sources
+
+Move sessions between machines. `export` bundles your local sessions (optionally filtered) into a portable JSON file; `import` writes a bundle into a named collection (or back into the native agent dirs); `sources` lists imported collections.
+
+```sh
+agtail export -o my-sessions.json
+agtail export --query deploy --tool Bash -o audit.json    # filtered, like grep
+agtail import alice.json --name alice                     # into collection "alice"
+agtail import my-sessions.json --to native                # restore into agent dirs
+agtail sources                                            # list collections + counts
+```
+
+See [Cross-machine sync](./sync) for the full model (collections, destinations, the overwrite gate).
+
 ## serve
 
 Launch the local web UI (127.0.0.1 only — no external traffic).
@@ -65,8 +80,14 @@ See [Web UI](./web-ui) for details.
 
 ## Common options
 
+These are **global** options — put them before the command.
+
 | Option | Description |
 | --- | --- |
 | `--mask` | Redact secrets in output (off by default — original text is shown) |
+| `--archived <mode>` | Archived sessions: `all` (default) / `only` / `none` |
+| `--programmatic <mode>` | Programmatic (SDK-driven) sessions: `all` (default) / `only` / `none` |
 | `--claude-dir <path>` | Override the Claude Code root (default `~/.claude/projects`) |
 | `--codex-dir <path>` | Override the Codex root (default `~/.codex/sessions`) |
+
+Many subcommands also take `--source <collection>` to scope to one imported collection (or `@local` for this machine's own sessions).

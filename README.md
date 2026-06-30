@@ -14,6 +14,10 @@ edits transcripts; the originals stay where they are.
 - **Agent-agnostic** — Claude Code (`~/.claude/projects`) and Codex
   (`~/.codex/sessions`) are normalized into one model and searched the same way.
 - **CLI + Web UI** — grep from the terminal, or `serve` a local 2-pane viewer.
+- **Hooks & plugins** — hook firings are first-class, searchable events,
+  attributed to the installed plugin that owns them.
+- **Cross-machine sync** — `export`/`import` sessions into named collections to
+  audit several machines or people in one viewer.
 - It does **not** compete with the official apps on real-time viewing, rich
   rendering, or image previews — those are theirs.
 
@@ -45,22 +49,30 @@ agtail show <id>            # one session timeline   (--tools for tool calls onl
 agtail stats <id>           # tool-usage counts + token/cost
 agtail serve                # local web UI on http://127.0.0.1:8765
 agtail --mask grep secret   # redact secrets in output
+
+# cross-machine sync
+agtail export -o my.json            # bundle local sessions (filterable like grep)
+agtail import alice.json --name alice   # into a named collection
+agtail sources                      # list imported collections
 ```
 
-Common flags: `--mask`, `--claude-dir <path>`, `--codex-dir <path>`.
+Common flags: `--mask`, `--archived <mode>`, `--programmatic <mode>`,
+`--claude-dir <path>`, `--codex-dir <path>`. Full reference in `docs/`.
 
 ## Web UI
 
-`agtail serve` opens a search-first 2-pane viewer: a global search box with
-agent / tool / cwd / period filters, a cross-agent hit + session list with
-source tags, and a timeline pane (Markdown text, collapse-by-default heavy
-blocks, per-tool filtering, token/cost panel).
+`agtail serve` opens a search-first 2-pane viewer: a global search box, a
+Filters popover (tool / model / cwd / date / agent / status / origin / mask), a
+cross-agent session + hit list with source tags and subagent nesting, and a
+timeline pane — Markdown text, collapse-by-default heavy blocks, per-turn
+token/cost badges, and hook events labeled by event, triggering tool, and owning
+plugin. Imported collections add a source switcher to scope the view per source.
 
 ## Notes
 
-- **Cost** is approximate and from a small user-maintained price table in
-  `src/core/cost.ts`. Models not in the table show tokens but **no** cost — agtail
-  never guesses a price.
+- **Cost** is approximate and sourced from LiteLLM's community price sheet
+  (cached on disk, refetched weekly). Models LiteLLM doesn't list show tokens but
+  **no** cost — agtail never guesses a price.
 - **Codex** stores rollout JSONL under `~/.codex/sessions/**/rollout-*.jsonl`
   (v0.14x indexes them in SQLite, but agtail reads the files directly). agtail's
   canonical Codex timeline is the `event_msg` stream for text plus the

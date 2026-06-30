@@ -6,6 +6,12 @@ Agents are useful but opaque, and "what did that operation actually do?" is hard
 
 agtail fills those gaps. It normalizes the scattered transcripts into one searchable projection you can grep across tools and projects. **Search is the point; viewing is secondary.** See [Concepts](./concepts) for the full rationale.
 
+![The agtail web UI: a unified, source-tagged session list on the left and a per-session timeline on the right.](/screenshots/overview.png)
+
+::: tip
+The screenshots throughout these docs use a small, fictional sample dataset (the "northwind" projects) — not anyone's real history. See `docs/screenshots/README.md` in the repo for how they're generated.
+:::
+
 ## Requirements
 
 - Node.js 20+
