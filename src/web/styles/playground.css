@@ -11,7 +11,7 @@
   font-family: var(--mono);
   font-size: 11px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
-  cursor: help;
+  pointer-events: none;
 }
 .pgbanner strong {
   color: var(--tool);
@@ -41,10 +41,13 @@
 
 .terminal {
   height: 100vh;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   background: var(--bg);
   cursor: text;
+  /* Keep the input row clear of the fixed banner / toggle pills at the bottom. */
+  padding-bottom: 44px;
 }
 .termout {
   flex: 1;
