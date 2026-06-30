@@ -96,6 +96,17 @@ describe("importSessions --to agtail", () => {
     expect(active).toBeDefined();
     expect(active?.importedFrom).toBe("alice");
   });
+
+  it("accepts a Japanese collection name and round-trips it", async () => {
+    const bundle = await exportSessions({ agents: ["codex"] }, overrides);
+    const res = await importSessions(bundle, { mode: "agtail", overwrite: false, collection: "田中のMac" });
+    expect(res.written).toBeGreaterThan(0);
+
+    expect(existsSync(collectionDir("田中のMac", "codex"))).toBe(true);
+    const scanned = await codexAdapter(codexRoot).findSessions();
+    const active = scanned.find((m) => m.id === "active-0001" && m.imported);
+    expect(active?.importedFrom).toBe("田中のMac");
+  });
 });
 
 describe("matchSource", () => {
@@ -124,6 +135,17 @@ describe("collection name guard", () => {
     await expect(importSessions(bundle, { mode: "agtail", overwrite: false, collection: "../evil" })).rejects.toThrow(
       /invalid collection/,
     );
+  });
+
+  it("rejects a collection name longer than the cap", async () => {
+    const bundle: Bundle = {
+      agtailExport: 1,
+      created: new Date().toISOString(),
+      files: [{ agent: "codex", rel: "x.jsonl", content: "y" }],
+    };
+    await expect(
+      importSessions(bundle, { mode: "agtail", overwrite: false, collection: "a".repeat(65) }),
+    ).rejects.toThrow(/too long/);
   });
 });
 

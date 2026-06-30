@@ -44,7 +44,7 @@ function SessionRow({
           </span>
         )}
         {s.imported && (
-          <span className="archmark" title={`imported from ${s.importedFrom ?? "another machine"}`}>
+          <span className="archmark imported" title={`imported from ${s.importedFrom ?? "another machine"}`}>
             📥 {s.importedFrom ?? "imported"}
           </span>
         )}
@@ -62,7 +62,7 @@ function SessionRow({
         {s.isSubagent && s.agentName && <span className="agentname">{s.agentName}</span>}
         <span className="sid">{s.id.slice(0, 8)}</span>
         <span>{fmtTs(s.ended)}</span>
-        <span>{s.messages}ev</span>
+        <span>{s.messages} events</span>
         {!child && <span className="cwd">{(s.cwd ?? "?").replace(/^.*\/(?=[^/]+\/[^/]+$)/, "…/")}</span>}
       </div>
       <div className="title">{s.title}</div>
@@ -163,7 +163,7 @@ function HitRow({
           </span>
         )}
         {m.imported && (
-          <span className="archmark" title={`imported from ${m.importedFrom ?? "another machine"}`}>
+          <span className="archmark imported" title={`imported from ${m.importedFrom ?? "another machine"}`}>
             📥 {m.importedFrom ?? "imported"}
           </span>
         )}

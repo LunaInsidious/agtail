@@ -36,6 +36,12 @@
 .nameinput.bad {
   border-color: var(--err);
 }
+/* Spells out why the name is rejected, right under the field. */
+.nameerr {
+  color: var(--err);
+  font-size: 11px;
+  line-height: 1.4;
+}
 
 /* Sync (⋯) menu: a short list of export/import items, plus the inline import
    confirmation and result. Reuses .filterpop's frame; tightens width + gap. */

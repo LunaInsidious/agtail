@@ -43,12 +43,24 @@ export function listCollections(): string[] {
     .sort();
 }
 
+/** Longest collection name we accept, counted in Unicode code points. Names
+ *  become a single filesystem path component, so even at UTF-8's worst case of
+ *  4 bytes/char this stays at 160 bytes — well under the common 255-byte
+ *  NAME_MAX limit, so we can cap by character count rather than bytes. */
+const COLLECTION_NAME_MAX = 40;
+
 /** Reject a collection name that isn't a single safe path segment, so an
- *  untrusted import can't escape the store via separators or `..`. */
+ *  untrusted import can't escape the store via separators or `..`. Letters and
+ *  digits of any language are allowed (e.g. Japanese); NFC-normalized so the
+ *  name round-trips through the filesystem regardless of input method. */
 export function sanitizeCollection(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed || trimmed === "." || trimmed === ".." || !/^[A-Za-z0-9._-]+$/.test(trimmed)) {
+  const trimmed = name.trim().normalize("NFC");
+  if (!trimmed || trimmed === "." || trimmed === ".." || !/^[\p{L}\p{N}._-]+$/u.test(trimmed)) {
     throw new Error(`invalid collection name: ${JSON.stringify(name)} (use letters, digits, and . _ -)`);
+  }
+  const length = [...trimmed].length;
+  if (length > COLLECTION_NAME_MAX) {
+    throw new Error(`collection name too long: ${length} chars (max ${COLLECTION_NAME_MAX})`);
   }
   return trimmed;
 }

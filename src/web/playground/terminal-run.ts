@@ -101,7 +101,7 @@ const baseFilters = (over: Partial<Filters>): Filters => ({
 
 function sessionLine(s: SessionMeta): string {
   const sub = s.isSubagent ? "  ↳ " : "";
-  return `${sub}${pad(agentTag(s.agent), 6)} ${s.id.slice(0, 8)}  ${shortTs(s.ended)}  ${pad(`${s.messages} ev`, 7)} ${s.cwd ?? ""}`;
+  return `${sub}${pad(agentTag(s.agent), 6)} ${s.id.slice(0, 8)}  ${shortTs(s.ended)}  ${pad(`${s.messages} events`, 11)} ${s.cwd ?? ""}`;
 }
 
 async function runList(p: Parsed): Promise<string[]> {

@@ -210,6 +210,15 @@ main {
 .meta .archmark {
   color: var(--muted);
 }
+/* Imported-collection names are user-supplied and can be long; clip them so a
+ * long name can't blow out the flex row. Full name stays in the title tooltip. */
+.imported {
+  max-width: 18ch;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* Programmatic origin: a small labelled pill so "what made this" reads at a glance. */
 .automark {
   font-size: 10px;

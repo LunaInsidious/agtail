@@ -1,12 +1,28 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { fileURLToPath } from "node:url";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { search, searchSessionHits } from "../src/core/search.js";
 
 // Point both adapters at our fixtures dir so the cross-agent search runs over
 // the synthetic Claude + Codex sessions together.
 const fixturesDir = dirname(fileURLToPath(new URL("./fixtures/rollout-codex-test.jsonl", import.meta.url)));
 const overrides = { "claude-code": fixturesDir, codex: fixturesDir } as const;
+
+// Isolate the import store: adapters also scan every imported collection under
+// XDG_DATA_HOME, so without this the search runs over whatever real collections
+// the developer's machine happens to hold and double-counts fixture sessions.
+const env = { tmp: "", prev: process.env.XDG_DATA_HOME };
+beforeEach(async () => {
+  env.tmp = await mkdtemp(join(tmpdir(), "agtail-search-"));
+  process.env.XDG_DATA_HOME = env.tmp;
+});
+afterEach(async () => {
+  if (env.prev === undefined) delete process.env.XDG_DATA_HOME;
+  else process.env.XDG_DATA_HOME = env.prev;
+  await rm(env.tmp, { recursive: true, force: true });
+});
 
 describe("search engine", () => {
   it("finds a term across both agents", async () => {

@@ -111,13 +111,25 @@ function safeCount(text: string): number | null {
   }
 }
 
-/** A safe collection name must match the server's allowed segment charset. */
-const validCollection = (s: string) => /^[A-Za-z0-9._-]+$/.test(s);
+/** Mirrors the server's cap in core/imported.ts (sanitizeCollection), in code points. */
+const COLLECTION_NAME_MAX = 40;
+
+/** Why a new-source name can't be used, as a user-facing message — null when it's valid.
+ *  Mirrors the server's charset + length rules so the reason shows before submitting.
+ *  Letters/digits of any language are allowed (e.g. Japanese), NFC-normalized to match. */
+function collectionError(s: string): string | null {
+  const t = s.trim().normalize("NFC");
+  if (!t) return "Enter a name for this source.";
+  if (!/^[\p{L}\p{N}._-]+$/u.test(t)) return "Use only letters, digits, and . _ - — no spaces or other symbols.";
+  const length = [...t].length;
+  if (length > COLLECTION_NAME_MAX) return `Too long — ${length}/${COLLECTION_NAME_MAX} characters.`;
+  return null;
+}
 
 /** A default collection name from the bundle's filename (sans extension). */
 function deriveCollection(filename: string): string {
   const base = filename.replace(/\.[^.]+$/, "");
-  return base.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "imported";
+  return base.replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/^-+|-+$/g, "") || "imported";
 }
 
 interface ImportPopProps {
@@ -169,7 +181,9 @@ function Radio({ name, on, onPick, label, hint }: RadioProps) {
 function ImportForm(p: ImportPopProps) {
   const danger = p.mode === "native" && p.overwrite;
   // Targeting an existing collection is always valid; a new one must be a safe name.
-  const nameOk = p.mode !== "agtail" || p.existing !== "" || validCollection(p.collection);
+  const namingNew = p.mode === "agtail" && p.existing === "";
+  const nameError = namingNew ? collectionError(p.collection) : null;
+  const nameOk = !namingNew || nameError === null;
   const ready = p.pending !== null && nameOk && (!danger || p.ack);
   return (
     <div className="syncmsg">
@@ -246,15 +260,19 @@ function ImportForm(p: ImportPopProps) {
             </select>
           )}
           {p.existing === "" && (
-            <input
-              className={"nameinput" + (nameOk ? "" : " bad")}
-              value={p.collection}
-              onChange={(e) => p.setCollection(e.target.value)}
-              placeholder="e.g. alice-macbook"
-              spellCheck={false}
-              autoFocus
-              onFocus={(e) => e.currentTarget.select()}
-            />
+            <>
+              <input
+                className={"nameinput" + (nameError ? " bad" : "")}
+                value={p.collection}
+                onChange={(e) => p.setCollection(e.target.value)}
+                placeholder="e.g. alice-macbook"
+                spellCheck={false}
+                autoFocus
+                onFocus={(e) => e.currentTarget.select()}
+                aria-invalid={nameError !== null}
+              />
+              {nameError && <span className="nameerr">{nameError}</span>}
+            </>
           )}
         </div>
       )}
