@@ -1,0 +1,20 @@
+.pgbanner {
+  position: fixed;
+  bottom: 10px;
+  left: 10px;
+  z-index: 50;
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel2);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+.pgbanner strong {
+  color: var(--tool);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}

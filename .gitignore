@@ -1,6 +1,7 @@
 node_modules/
 dist/
 dist-web/
+dist-playground/
 *.log
 .DS_Store
 .remember/
