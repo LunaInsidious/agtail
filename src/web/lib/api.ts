@@ -121,18 +121,18 @@ function qs(params: Record<string, string | string[] | undefined>): string {
   return s ? "?" + s : "";
 }
 
-export async function apiFacets(): Promise<{ tools: string[]; cwds: string[]; models: string[] }> {
+async function fetchFacets(): Promise<{ tools: string[]; cwds: string[]; models: string[] }> {
   const r = await fetch("/api/facets");
   return r.json();
 }
 
 /** The imported collections (one per synced person/machine) with a count each. */
-export async function apiSources(): Promise<{ name: string; count: number }[]> {
+async function fetchSources(): Promise<{ name: string; count: number }[]> {
   const r = await fetch("/api/sources");
   return r.json();
 }
 
-export async function apiSessions(f: Partial<Filters>): Promise<SessionMeta[]> {
+async function fetchSessions(f: Partial<Filters>): Promise<SessionMeta[]> {
   const r = await fetch(
     "/api/sessions" +
       qs({
@@ -147,12 +147,12 @@ export async function apiSessions(f: Partial<Filters>): Promise<SessionMeta[]> {
   return r.json();
 }
 
-export async function apiSession(agent: Agent, id: string, mask: boolean): Promise<Session> {
+async function fetchSession(agent: Agent, id: string, mask: boolean): Promise<Session> {
   const r = await fetch("/api/session" + qs({ agent, id, mask: mask ? "1" : "0" }));
   return r.json();
 }
 
-export async function apiSearch(f: Filters, limit: number): Promise<SessionHit[]> {
+async function fetchSearch(f: Filters, limit: number): Promise<SessionHit[]> {
   const r = await fetch(
     "/api/search" +
       qs({
@@ -177,7 +177,7 @@ export async function apiSearch(f: Filters, limit: number): Promise<SessionHit[]
 /** Download a bundle of native sessions (for cross-machine sync). With `filters`,
  *  the server re-runs them unbounded and exports only the matching sessions;
  *  without, the whole machine. */
-export async function apiExport(filters?: Filters): Promise<Blob> {
+async function fetchExport(filters?: Filters): Promise<Blob> {
   const r = await fetch("/api/export", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -193,7 +193,7 @@ export type ImportMode = "agtail" | "native";
 
 /** Upload a bundle. `mode` chooses the destination; `overwrite` replaces existing
  *  files (else they're skipped, i.e. append-only). */
-export async function apiImport(
+async function fetchImport(
   bundleText: string,
   opts: { mode: ImportMode; overwrite: boolean; collection?: string },
 ): Promise<{ written: number; skipped: number }> {
@@ -211,3 +211,43 @@ export async function apiImport(
   if (!r.ok) throw new Error(data?.error ?? "import failed");
   return data;
 }
+
+// The functions above talk to the local server over /api/*. The playground has
+// no server, so it injects an in-browser implementation (setApiImpl) that runs
+// the same core engine over bundled sample data. Components call the wrappers
+// below and are oblivious to which implementation is active.
+export interface ApiImpl {
+  apiFacets: typeof fetchFacets;
+  apiSources: typeof fetchSources;
+  apiSessions: typeof fetchSessions;
+  apiSession: typeof fetchSession;
+  apiSearch: typeof fetchSearch;
+  apiExport: typeof fetchExport;
+  apiImport: typeof fetchImport;
+}
+
+const fetchImpl: ApiImpl = {
+  apiFacets: fetchFacets,
+  apiSources: fetchSources,
+  apiSessions: fetchSessions,
+  apiSession: fetchSession,
+  apiSearch: fetchSearch,
+  apiExport: fetchExport,
+  apiImport: fetchImport,
+};
+
+const active: { impl: ApiImpl } = { impl: fetchImpl };
+
+/** Replace the API implementation (the playground entry injects the in-browser
+ *  backend before rendering). */
+export function setApiImpl(impl: ApiImpl): void {
+  active.impl = impl;
+}
+
+export const apiFacets: ApiImpl["apiFacets"] = () => active.impl.apiFacets();
+export const apiSources: ApiImpl["apiSources"] = () => active.impl.apiSources();
+export const apiSessions: ApiImpl["apiSessions"] = (f) => active.impl.apiSessions(f);
+export const apiSession: ApiImpl["apiSession"] = (agent, id, mask) => active.impl.apiSession(agent, id, mask);
+export const apiSearch: ApiImpl["apiSearch"] = (f, limit) => active.impl.apiSearch(f, limit);
+export const apiExport: ApiImpl["apiExport"] = (filters) => active.impl.apiExport(filters);
+export const apiImport: ApiImpl["apiImport"] = (bundleText, opts) => active.impl.apiImport(bundleText, opts);

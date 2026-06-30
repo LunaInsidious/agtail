@@ -17,8 +17,10 @@
   "scripts": {
     "build:web": "vite build",
     "build:node": "tsup",
+    "build:playground": "vite build --config vite.config.playground.ts",
     "build": "pnpm build:web && pnpm build:node",
     "dev:web": "vite",
+    "dev:playground": "vite --config vite.config.playground.ts",
     "dev:cli": "tsx src/cli/index.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint && biome lint src/web/styles",

@@ -41,9 +41,17 @@ module.exports = {
       name: "web-is-browser-only",
       severity: "error",
       comment:
-        "Browser code must not import core/server/cli (all Node-side). It mirrors the few types it needs (web/lib/api.ts) and talks to the server over HTTP, so the bundle never pulls in node:fs/path etc. This is also why summarizeInput is duplicated in web rather than imported from core.",
-      from: { path: "^src/web/" },
+        "Browser code must not import core/server/cli (all Node-side). It mirrors the few types it needs (web/lib/api.ts) and talks to the server over HTTP, so the bundle never pulls in node:fs/path etc. This is also why summarizeInput is duplicated in web rather than imported from core. EXCEPTION: src/web/playground/ is the server-less build — it reuses the fs-free core engine (search/cost/parsers) and aliases node:* to browser shims at build, so it may import core (but still not server/cli).",
+      from: { path: "^src/web/", pathNot: "^src/web/playground/" },
       to: { path: "^src/(core|server|cli)/" },
+    },
+    {
+      name: "web-playground-no-server-cli",
+      severity: "error",
+      comment:
+        "The playground may reuse core, but must not import server/cli (Node entry points). node:fs etc. it pulls via core are aliased to browser shims at build time.",
+      from: { path: "^src/web/playground/" },
+      to: { path: "^src/(server|cli)/" },
     },
     {
       name: "node-layers-no-web",

@@ -1,16 +1,6 @@
 import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
-import { isRecord } from "./utils.js";
-
-/** Parse one JSONL line into a record, or null if it's broken/non-object. */
-function parseLine(trimmed: string): Record<string, unknown> | null {
-  try {
-    const obj: unknown = JSON.parse(trimmed);
-    return isRecord(obj) ? obj : null;
-  } catch {
-    return null;
-  }
-}
+import { parseLine } from "./jsonl-parse.js";
 
 /**
  * Stream a JSONL file line by line, yielding parsed objects. Broken lines are

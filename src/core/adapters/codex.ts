@@ -145,8 +145,8 @@ function toEvents(
   });
 }
 
-async function parse(path: string): Promise<Parsed> {
-  const rec: Rec[] = (await collect(iterJsonl(path))).map((line) => ({
+function parseCodex(lines: Record<string, unknown>[]): Parsed {
+  const rec: Rec[] = lines.map((line) => ({
     ts: str(line.timestamp) || undefined,
     type: str(line.type),
     p: obj(line.payload),
@@ -224,12 +224,22 @@ function outputText(out: unknown): string {
   return out == null ? "" : JSON.stringify(out);
 }
 
-async function readSession(path: string): Promise<Session> {
-  const parsed = await parse(path);
+/** Identity a rollout's contents may not fully carry (id falls back to the
+ *  filename; path/mtime come from the filesystem or the in-memory playground). */
+export interface CodexParseCtx {
+  id: string;
+  path: string;
+  mtime: number;
+}
+
+/** Normalize a Codex rollout's parsed JSONL lines into a Session. Pure (no
+ *  filesystem) so the fs adapter and the browser playground share one parser. */
+export function buildCodexSession(lines: Record<string, unknown>[], ctx: CodexParseCtx): Session {
+  const parsed = parseCodex(lines);
   return {
     agent: "codex",
-    id: parsed.id ?? basename(path).replace(/\.jsonl$/, ""),
-    path,
+    id: parsed.id ?? ctx.id,
+    path: ctx.path,
     cwd: parsed.cwd,
     version: parsed.version,
     model: parsed.model,
@@ -238,10 +248,15 @@ async function readSession(path: string): Promise<Session> {
     ended: parsed.ended,
     title: parsed.title ?? "(no prompt)",
     messages: parsed.events.length,
-    mtime: await mtimeMs(path),
+    mtime: ctx.mtime,
     events: parsed.events,
     ...(parsed.programmatic ? { programmatic: true, origin: parsed.origin } : {}),
   };
+}
+
+async function readSession(path: string): Promise<Session> {
+  const lines = await collect(iterJsonl(path));
+  return buildCodexSession(lines, { id: basename(path).replace(/\.jsonl$/, ""), path, mtime: await mtimeMs(path) });
 }
 
 const isRollout = (n: string) => n.startsWith("rollout-") && n.endsWith(".jsonl");

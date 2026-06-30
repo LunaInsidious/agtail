@@ -364,12 +364,24 @@ function accumulate(meta: Meta, line: Record<string, unknown>): void {
   }
 }
 
-async function readSession(path: string): Promise<Session> {
+/** Identity a transcript's contents can't carry: derived from its location +
+ *  filesystem (or supplied directly by the in-memory playground). */
+export interface ClaudeParseCtx {
+  id: string;
+  path: string;
+  mtime: number;
+  /** Present iff this is a subagent transcript (nests it under its parent). */
+  subagent?: SubagentInfo;
+}
+
+/** Normalize a Claude transcript's parsed JSONL lines into a Session. Pure (no
+ *  filesystem) so the fs adapter and the browser playground share one parser. */
+export function buildClaudeSession(lines: Record<string, unknown>[], ctx: ClaudeParseCtx): Session {
   const meta: Meta = { sdkPrompt: false, messages: 0, models: [] };
   const raw: Event[] = [];
   const seenUsage = new Set<string>();
 
-  for await (const line of iterJsonl(path)) {
+  for (const line of lines) {
     accumulate(meta, line);
     for (const e of normalizeLine(line, seenUsage)) raw.push(e);
   }
@@ -384,8 +396,7 @@ async function readSession(path: string): Promise<Session> {
   // older versions don't stamp "typed" even on real human turns.
   const programmatic =
     (entrypoint != null && (entrypoint.startsWith("sdk") || entrypoint === "claude-desktop")) || meta.sdkPrompt;
-  const isSubagent = SUBAGENT_RE.test(path);
-  const sub = isSubagent ? readSubagentInfo(path) : undefined;
+  const sub = ctx.subagent;
   // For a subagent, the task description is a clearer title than the raw
   // instruction prompt. The agent type is shown separately as a badge.
   const subTitle = sub?.description || undefined;
@@ -396,8 +407,8 @@ async function readSession(path: string): Promise<Session> {
 
   return {
     agent: AGENT,
-    id: basename(path).replace(/\.jsonl$/, ""),
-    path,
+    id: ctx.id,
+    path: ctx.path,
     cwd: meta.cwd,
     gitBranch: meta.gitBranch,
     version: meta.version,
@@ -407,10 +418,10 @@ async function readSession(path: string): Promise<Session> {
     ended: meta.ended,
     title: subTitle ?? title ?? "(no prompt)",
     messages: meta.messages,
-    mtime: await mtimeMs(path),
+    mtime: ctx.mtime,
     events,
     ...(programmatic ? { programmatic: true, origin: entrypoint } : {}),
-    ...(isSubagent && sub
+    ...(sub
       ? {
           isSubagent: true,
           parentId: sub.parentId,
@@ -419,6 +430,18 @@ async function readSession(path: string): Promise<Session> {
         }
       : {}),
   };
+}
+
+async function readSession(path: string): Promise<Session> {
+  const lines: Record<string, unknown>[] = [];
+  for await (const line of iterJsonl(path)) lines.push(line);
+  const subagent = SUBAGENT_RE.test(path) ? readSubagentInfo(path) : undefined;
+  return buildClaudeSession(lines, {
+    id: basename(path).replace(/\.jsonl$/, ""),
+    path,
+    mtime: await mtimeMs(path),
+    subagent,
+  });
 }
 
 const JSONL = ".jsonl";

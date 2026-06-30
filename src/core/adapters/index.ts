@@ -1,14 +1,27 @@
 import type { Agent, ArchivedFilter, ProgrammaticFilter, Session, SessionMeta } from "../types.js";
 import { matchArchived, matchProgrammatic, matchSource } from "../types.js";
 import type { Adapter, RootOverrides } from "./types.js";
-import { claudeCodeAdapter } from "./claude-code.js";
-import { codexAdapter } from "./codex.js";
 
 export type { Adapter } from "./types.js";
 
+// Adapters are injected, not statically imported, so this module (and everything
+// downstream — search, listing) carries no dependency on the filesystem adapters.
+// The Node entry points register the real fs adapters (registerNodeAdapters); the
+// browser playground registers in-memory ones. Keeps node:fs out of the SPA bundle.
+export type AdapterFactory = (overrides: RootOverrides) => Adapter[];
+const registry: { factory?: AdapterFactory } = {};
+
+/** Register the adapter set. Call once at startup before any listing/search. */
+export function registerAdapters(factory: AdapterFactory): void {
+  registry.factory = factory;
+}
+
 /** Build all adapters (optionally with per-agent root overrides). */
 function buildAdapters(overrides: RootOverrides = {}): Adapter[] {
-  return [claudeCodeAdapter(overrides["claude-code"]), codexAdapter(overrides["codex"])];
+  if (!registry.factory) {
+    throw new Error("no adapters registered — call registerAdapters() at startup (see adapters/register-node.ts)");
+  }
+  return registry.factory(overrides);
 }
 
 /** Select adapters, optionally narrowed to a subset of agents. */

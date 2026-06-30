@@ -3,6 +3,7 @@ import type { Agent, ArchivedFilter, ProgrammaticFilter, Session } from "../core
 import { AGENTS, isAgent, isEventKind } from "../core/types.js";
 import type { RootOverrides } from "../core/adapters/types.js";
 import { findAllSessions, resolveSession, selectAdapters } from "../core/adapters/index.js";
+import { registerNodeAdapters } from "../core/adapters/register-node.js";
 import { collectionDir, listCollections } from "../core/imported.js";
 import { walkFiles } from "../core/walk.js";
 import type { SearchFilters } from "../core/search.js";
@@ -146,6 +147,7 @@ function parseExportFilters(body: unknown): SearchFilters | null {
 }
 
 export function createApiHandler(opts: ApiOptions = {}) {
+  registerNodeAdapters(); // fs adapters; the browser playground registers its own
   const ov = opts.overrides ?? {};
   const defaultLimit = opts.searchLimit ?? 500;
   // Facets are a full scan, so compute once and cache for the process lifetime.

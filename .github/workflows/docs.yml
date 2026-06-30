@@ -1,15 +1,20 @@
 name: Docs
 
-# Build the VitePress site (docs/) and publish it to GitHub Pages.
+# Build the VitePress docs (docs/) AND the server-less playground (dist-playground)
+# and publish both to GitHub Pages: docs at /agtail/, playground at /agtail/playground/.
 # One-time setup: repo Settings → Pages → Build and deployment → Source =
-# "GitHub Actions". Site is served at https://<owner>.github.io/agtail/ (base
-# is set in docs/.vitepress/config.ts).
+# "GitHub Actions". (bases are set in docs/.vitepress/config.ts and
+# vite.config.playground.ts.)
 on:
   push:
     branches: [main]
-    # Only rebuild when the docs (or this workflow) change.
+    # Rebuild when the docs or the playground (app/core sources) change.
     paths:
       - "docs/**"
+      - "src/**"
+      - "vite.config.playground.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
@@ -35,14 +40,27 @@ jobs:
           node-version: 22
           cache: pnpm
       - uses: actions/configure-pages@v5
+      # The playground builds from the root project (Vite + React), so it needs
+      # the root deps installed.
+      - name: Build playground
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build:playground
       # docs/ is its own pnpm project with its own committed lockfile.
       # --ignore-scripts: VitePress needs no package lifecycle scripts, so block
       # transitive postinstall scripts from running in CI (supply-chain hardening).
-      - name: Install & build docs
+      - name: Build docs
         working-directory: docs
         run: |
           pnpm install --frozen-lockfile --ignore-scripts
           pnpm build
+      # Nest the playground under the docs site at /playground/ (its index file
+      # is named index.playground.html, so rename it to index.html).
+      - name: Assemble site
+        run: |
+          mkdir -p docs/.vitepress/dist/playground
+          cp -R dist-playground/. docs/.vitepress/dist/playground/
+          mv docs/.vitepress/dist/playground/index.playground.html docs/.vitepress/dist/playground/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: docs/.vitepress/dist
