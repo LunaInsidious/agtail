@@ -18,3 +18,70 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
+
+.pgtoggle {
+  position: fixed;
+  bottom: 10px;
+  right: 10px;
+  z-index: 50;
+  padding: 6px 13px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel2);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.pgtoggle:hover {
+  border-color: var(--tool);
+  color: var(--tool);
+}
+
+.terminal {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  cursor: text;
+}
+.termout {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 18px 8px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.termline {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.termline.in {
+  color: var(--tool);
+}
+.termline.out {
+  color: var(--text);
+}
+.termrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px 18px;
+  border-top: 1px solid var(--border);
+}
+.termprompt {
+  color: var(--tool);
+  font-family: var(--mono);
+  font-weight: 600;
+}
+.terminput {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12.5px;
+}

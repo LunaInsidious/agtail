@@ -1,6 +1,5 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { App } from "./App.js";
 import { setApiImpl } from "./lib/api.js";
 import {
   apiExport,
@@ -11,7 +10,7 @@ import {
   apiSessions,
   apiSources,
 } from "./playground/backend.js";
-import { PlaygroundBanner } from "./playground/Banner.js";
+import { PlaygroundShell } from "./playground/Shell.js";
 import "./styles/index.css";
 import "./styles/playground.css";
 
@@ -23,7 +22,6 @@ const root = document.getElementById("root");
 if (!root) throw new Error("#root missing");
 createRoot(root).render(
   <StrictMode>
-    <PlaygroundBanner />
-    <App />
+    <PlaygroundShell />
   </StrictMode>,
 );
