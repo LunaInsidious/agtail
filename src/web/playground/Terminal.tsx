@@ -65,24 +65,26 @@ export function Terminal() {
         {lines.map((l, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: append-only console log, indices are stable
           <div key={i} className={`termline ${l.role}`}>
-            {l.text || " "}
+            {l.text || " "}
           </div>
         ))}
+        {/* The prompt is the last line of the log, not a detached footer, so the
+            cursor sits where the output flow ends — like a real terminal. */}
+        <div className="termrow">
+          <span className="termprompt">{busy ? "…" : "$"}</span>
+          <input
+            ref={inputRef}
+            className="terminput"
+            value={input}
+            spellCheck={false}
+            autoComplete="off"
+            autoFocus
+            placeholder="agtail …"
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onKey}
+          />
+        </div>
         <div ref={endRef} />
-      </div>
-      <div className="termrow">
-        <span className="termprompt">{busy ? "…" : "$"}</span>
-        <input
-          ref={inputRef}
-          className="terminput"
-          value={input}
-          spellCheck={false}
-          autoComplete="off"
-          autoFocus
-          placeholder="agtail …"
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={onKey}
-        />
       </div>
     </div>
   );
