@@ -27,7 +27,7 @@
   background: var(--panel);
   border-bottom: 1px solid var(--border);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 .meta code {
@@ -236,7 +236,7 @@ mark {
 .hookplugin,
 .hooktool {
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--muted);
   background: var(--panel2);
   border: 1px solid var(--border);
@@ -254,7 +254,7 @@ mark {
 }
 .role {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--muted);
@@ -264,7 +264,7 @@ mark {
 .usage {
   float: right;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--ok);
   background: rgba(106, 168, 132, 0.1);
   border-radius: 4px;
@@ -388,7 +388,7 @@ mark {
 }
 .detail .lbl {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);

@@ -30,7 +30,7 @@
   margin-left: auto;
   color: var(--faint);
   font-style: normal;
-  font-size: 10.5px;
+  font-size: 11px;
 }
 /* Invalid collection name (empty or illegal chars). */
 .nameinput.bad {
@@ -77,7 +77,7 @@
 .syncopt > .lbl {
   color: var(--muted);
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -96,7 +96,7 @@
   margin-left: auto;
   color: var(--faint);
   font-style: normal;
-  font-size: 10.5px;
+  font-size: 11px;
 }
 /* native + overwrite is the one irreversible combo: gate it behind a loud
    warning and a required acknowledgement. */
@@ -511,7 +511,7 @@
 .filterpop .disc .lbl {
   color: var(--muted);
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -520,7 +520,7 @@
 }
 .filterpop .disc .chev {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 .filterpop .frow {
   display: flex;
@@ -530,7 +530,7 @@
 .filterpop .frow > .lbl {
   color: var(--muted);
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -649,7 +649,7 @@
   border: none;
   color: var(--muted);
   cursor: pointer;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1;
   padding: 2px 4px;
   border-radius: 8px;
