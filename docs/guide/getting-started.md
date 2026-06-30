@@ -14,6 +14,8 @@ The screenshots throughout these docs use a small, fictional sample dataset (the
 
 ::: tip Try it without installing
 The [playground](https://lunainsidious.github.io/agtail/playground/) runs agtail entirely in your browser over that same fictional sample — search, the timeline, hooks, export/import, and a terminal view. Nothing is uploaded; imports stay in memory and reset on reload.
+
+It's deliberately offline (no LiteLLM, no backend): you can import your own bundle, but **cost** is priced only for the sample's models and **plugin attribution** only resolves the sample's plugins. Run agtail locally for full pricing and your own plugins.
 :::
 
 ## Requirements

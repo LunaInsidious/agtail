@@ -11,7 +11,7 @@
   font-family: var(--mono);
   font-size: 11px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
-  pointer-events: none;
+  cursor: help;
 }
 .pgbanner strong {
   color: var(--tool);

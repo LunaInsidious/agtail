@@ -102,6 +102,12 @@ pnpm dev:playground     # local dev server
 The same app code runs the real core engine in the browser (the `/api` layer is
 swapped for an in-browser backend; `node:*` is aliased to browser shims at build).
 
+It's intentionally **self-contained and offline** — it never calls LiteLLM or any
+backend. You can import your own exported bundle (it's fully searchable and stays
+in your browser), but two things are limited vs. the installed tool: **cost** is
+priced only for the sample's models, and **plugin attribution** only resolves the
+sample's plugins. For full LiteLLM pricing and your own plugins, run agtail locally.
+
 ## Development
 
 One TypeScript codebase in layers: `src/core` (adapters + the normalized model,
