@@ -5,6 +5,7 @@ import type { Agent, ArchivedFilter, ProgrammaticFilter, TriFilter } from "../co
 import { AGENTS, isAgent, isEventKind } from "../core/types.js";
 import type { RootOverrides } from "../core/adapters/types.js";
 import { findAllSessions, resolveSession } from "../core/adapters/index.js";
+import { registerNodeAdapters } from "../core/adapters/register-node.js";
 import { assertBundle, exportSessions, importSessions } from "../core/transfer.js";
 import { listCollections } from "../core/imported.js";
 import { matchingSessionRefs, search, searchSessions } from "../core/search.js";
@@ -24,6 +25,8 @@ import type {
   ShowOpts,
   StatsOpts,
 } from "./options.js";
+
+registerNodeAdapters(); // wire the fs adapters before any command reads sessions
 
 const HOME = homedir();
 const tilde = (p?: string) => (p ?? "?").replace(HOME, "~");
