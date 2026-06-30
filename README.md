@@ -18,8 +18,18 @@ edits transcripts; the originals stay where they are.
   attributed to the installed plugin that owns them.
 - **Cross-machine sync** — `export`/`import` sessions into named collections to
   audit several machines or people in one viewer.
+- **Try it in the browser** — a server-less [playground](#playground) runs the
+  whole thing over fictional sample data (no install, nothing uploaded).
 - It does **not** compete with the official apps on real-time viewing, rich
   rendering, or image previews — those are theirs.
+
+📖 Docs: <https://lunainsidious.github.io/agtail/> · 🛝 Playground: <https://lunainsidious.github.io/agtail/playground/>
+
+## Requirements
+
+- Node.js 22+
+- pnpm
+- The agent(s) whose history you want to read (Claude Code at `~/.claude/projects`, Codex at `~/.codex/sessions`)
 
 ## Install & build
 
@@ -61,12 +71,55 @@ Common flags: `--mask`, `--archived <mode>`, `--programmatic <mode>`,
 
 ## Web UI
 
-`agtail serve` opens a search-first 2-pane viewer: a global search box, a
-Filters popover (tool / model / cwd / date / agent / status / origin / mask), a
-cross-agent session + hit list with source tags and subagent nesting, and a
-timeline pane — Markdown text, collapse-by-default heavy blocks, per-turn
-token/cost badges, and hook events labeled by event, triggering tool, and owning
-plugin. Imported collections add a source switcher to scope the view per source.
+`agtail serve` opens a search-first 2-pane viewer:
+
+- a global **search box** with recent-search history and named **saved searches**;
+- a **Filters** popover (tool / model / cwd / date / agent / status / origin / mask);
+- a cross-agent **session + hit list** with source tags, subagent nesting, and marks
+  for archived / imported / 🤖 programmatic (SDK-spawned) sessions;
+- a **timeline** — Markdown text, collapse-by-default heavy blocks, per-turn
+  token/cost badges, **hook events** (labeled by event, triggering tool, and owning
+  plugin), and an **in-session search**;
+- a **light/dark theme** toggle, plus a **source switcher** (once you have imports)
+  to scope the view to one collection.
+
+For cross-machine sync there's also **Import**/**Export** in the UI (the filtered
+export re-runs your current filter server-side).
+
+## Playground
+
+A static, server-less build runs agtail **entirely in the browser** over a
+fictional sample dataset — so you can try search, the timeline, hooks,
+export/import, and a terminal view (`list` / `grep` / `show` / `stats`) without
+installing anything or exposing real history. Imports stay in memory and reset on
+reload. Hosted at the link above; build/run it yourself with:
+
+```sh
+pnpm build:playground   # → dist-playground/ (base /agtail/playground/)
+pnpm dev:playground     # local dev server
+```
+
+The same app code runs the real core engine in the browser (the `/api` layer is
+swapped for an in-browser backend; `node:*` is aliased to browser shims at build).
+
+## Development
+
+One TypeScript codebase in layers: `src/core` (adapters + the normalized model,
+search, cost, masking), `src/cli`, `src/server`, and `src/web` (the React SPA).
+The documentation site under `docs/` is an independent pnpm project.
+
+```sh
+pnpm check          # typecheck + lint + depcruise + knip + format + unit tests
+pnpm test           # unit tests (vitest)
+pnpm test:e2e       # Playwright end-to-end (system Chrome)
+pnpm dev:web        # web UI with hot reload (self-contained — /api is built in)
+pnpm dev:cli <cmd>  # run the CLI from source
+
+cd docs && pnpm install && pnpm dev   # docs site (English + 日本語)
+```
+
+Quality gates are enforced: `oxlint`/`biome` (incl. a no-`let`, assertion-free
+style), `dependency-cruiser` for layer boundaries, and `knip` for dead code.
 
 ## Notes
 
