@@ -2,20 +2,17 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import type { Agent } from "./types.js";
-import { AGENTS, isAgent } from "./types.js";
+import { AGENTS } from "./types.js";
 import type { RootOverrides } from "./adapters/types.js";
 import { selectAdapters } from "./adapters/index.js";
-import { isRecord } from "./utils.js";
 import { collectionDir, sanitizeCollection } from "./imported.js";
+import { assertBundle } from "./bundle.js";
+import type { Bundle } from "./bundle.js";
 
-// A portable bundle of raw transcripts: enough to rehydrate sessions on another
-// machine. Files carry their content inline plus a base-relative path so import
-// can place them either back into the native agent dirs or the agtail store.
-export interface Bundle {
-  agtailExport: 1;
-  created: string;
-  files: { agent: Agent; rel: string; content: string }[];
-}
+// The bundle shape + its validator live in the fs-free bundle.ts (so the browser
+// can use them too); re-exported here for existing import sites.
+export type { Bundle } from "./bundle.js";
+export { assertBundle } from "./bundle.js";
 
 /** A session the caller wants exported, identified by the same agent + path the
  *  list/search API returns. Used to narrow a full export down to a chosen subset. */
@@ -70,21 +67,6 @@ interface ImportOpts {
   /** Collection name for mode "agtail" (groups this import; default "imported").
    *  Ignored for "native". */
   collection?: string;
-}
-
-/** Validate untrusted bundle JSON, throwing a clear Error on any shape mismatch
- *  so callers (CLI) can surface it rather than writing garbage to disk. */
-export function assertBundle(value: unknown): asserts value is Bundle {
-  if (!isRecord(value) || value.agtailExport !== 1) {
-    throw new Error("not an agtail export bundle (agtailExport !== 1)");
-  }
-  if (!Array.isArray(value.files)) throw new Error("bundle.files must be an array");
-  for (const f of value.files) {
-    if (!isRecord(f) || typeof f.agent !== "string" || typeof f.rel !== "string" || typeof f.content !== "string") {
-      throw new Error("bundle.files entries must have string agent/rel/content");
-    }
-    if (!isAgent(f.agent)) throw new Error(`bundle.files has unknown agent: ${f.agent}`);
-  }
 }
 
 /** A resolved destination is safe only if it stays inside its base dir — a
