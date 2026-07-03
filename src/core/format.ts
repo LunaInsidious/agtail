@@ -85,6 +85,13 @@ export function integrityNote(m: { malformedLines?: number; truncated?: boolean 
   return bits.join(", ");
 }
 
+/** Human caveat for a non-normal session ending, or "" when normal/unknown. */
+export function terminationNote(m: { termination?: "interrupted" | "limit" }): string {
+  if (m.termination === "interrupted") return "interrupted — cut off mid-turn";
+  if (m.termination === "limit") return "the final turn hit the output-token limit";
+  return "";
+}
+
 /** Text that should be searched for a tool_use event (input + summary). */
 export function toolSearchText(tool: string | undefined, input: unknown): string {
   const parts = [tool ?? "", summarizeInput(tool, input)];

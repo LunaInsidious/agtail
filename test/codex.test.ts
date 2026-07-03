@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { fileURLToPath } from "node:url";
-import { codexAdapter } from "../src/core/adapters/codex.js";
+import { buildCodexSession, codexAdapter } from "../src/core/adapters/codex.js";
 import { obj } from "../src/core/utils.js";
+
+const msg = (type: string, extra: Record<string, unknown> = {}) => ({
+  timestamp: "2026-07-02T10:00:00Z",
+  type: "event_msg",
+  payload: { type, ...extra },
+});
 
 const fixture = fileURLToPath(new URL("./fixtures/rollout-codex-test.jsonl", import.meta.url));
 const forkFixture = fileURLToPath(new URL("./fixtures/rollout-codex-fork.jsonl", import.meta.url));
@@ -57,5 +63,33 @@ describe("codex adapter", () => {
     // response_item message (dup) and reasoning (encrypted) are not surfaced
     expect(sess.events.some((e) => e.text === "message" || e.text === "reasoning")).toBe(false);
     expect(sess.events.some((e) => JSON.stringify(e).includes("ENCRYPTEDNOISE"))).toBe(false);
+  });
+});
+
+describe("codex termination", () => {
+  const ctx = { id: "s", path: "p", mtime: 0 };
+
+  it("flags interrupted when a turn started but never completed", () => {
+    const sess = buildCodexSession(
+      [
+        msg("user_message", { message: "hi" }),
+        msg("task_started", { turn_id: "t1" }),
+        msg("agent_message", { message: "working" }),
+      ],
+      ctx,
+    );
+    expect(sess.termination).toBe("interrupted");
+  });
+
+  it("leaves termination unset when every turn completed", () => {
+    const sess = buildCodexSession(
+      [
+        msg("task_started", { turn_id: "t1" }),
+        msg("agent_message", { message: "done" }),
+        msg("task_complete", { turn_id: "t1" }),
+      ],
+      ctx,
+    );
+    expect(sess.termination).toBeUndefined();
   });
 });

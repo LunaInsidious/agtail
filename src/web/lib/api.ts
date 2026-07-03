@@ -31,6 +31,8 @@ export interface Event {
   // One-line tool_use summary computed by the server/CLI (via the agent's adapter,
   // so plugin tools render here too). Preferred over the local summarizeInput mirror.
   toolSummary?: string;
+  // This text event is a context-compaction summary (detail lost downstream).
+  compactBoundary?: boolean;
   hookEvent?: string;
   // Hook command + the plugin it belongs to (resolved by the server, local only).
   command?: string;
@@ -66,6 +68,9 @@ export interface SessionMeta {
   // unparseable lines dropped on read; truncated = final line was cut mid-write.
   malformedLines?: number;
   truncated?: boolean;
+  // Non-normal ending (set only when detected) + count of context compactions.
+  termination?: "interrupted" | "limit";
+  compactions?: number;
   /** For an SDK-spawned session: the plugin that launched it (inferred). */
   spawnedBy?: string;
   isSubagent?: boolean;

@@ -81,6 +81,11 @@ export interface Event {
   // set by normalization. Lets the browser render agent-specific tools it can't summarize.
   toolSummary?: string;
 
+  // kind === "text": this event is a context-compaction summary — the agent
+  // condensed its own context at this point, so fine detail before it is lost to
+  // everything downstream. (Claude records it as isCompactSummary.)
+  compactBoundary?: boolean;
+
   // kind === "hook": the lifecycle event it fired on (SessionStart, PreToolUse,
   // PostToolUse, Stop, …) — used to group/toggle hooks by type.
   hookEvent?: string;
@@ -153,6 +158,19 @@ export interface SessionMeta {
   //                    the file was cut mid-write (an interrupted/killed session).
   malformedLines?: number;
   truncated?: boolean;
+
+  // How the session ended, set ONLY when non-normal (absence = normal/unknown,
+  // same positive-signal convention as the integrity fields). A forensic reading
+  // aid — not a filter dimension — derived from what each format actually records:
+  //   "interrupted" — a turn started but never completed: the session was cut
+  //                   mid-turn (Codex: a task_started with no task_complete).
+  //   "limit"       — the final turn hit the model's output-token cap (Claude:
+  //                   stop_reason "max_tokens").
+  termination?: "interrupted" | "limit";
+  // Number of context-compaction boundaries in the session (set only when > 0).
+  // Each marks a point where the agent condensed its context — detail is lost to
+  // everything after it, which often explains later "it forgot X" behaviour.
+  compactions?: number;
 
   // Subagent (sidechain) linkage. A subagent transcript is a child of the
   // session that spawned it via a Task tool call.

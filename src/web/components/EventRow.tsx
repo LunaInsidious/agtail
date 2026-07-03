@@ -78,6 +78,11 @@ export const EventRow = memo(function EventRow({ e, highlight }: { e: Event; hig
         <div className="body">
           <UsageBadge e={e} />
           <span className="role">{label}</span>
+          {e.compactBoundary && (
+            <span className="compactmark" title="context compacted here — detail before this point is condensed">
+              ⟳ context compacted
+            </span>
+          )}
           <Collapsible text={e.text ?? ""} markdown highlight={highlight} />
         </div>
       </div>

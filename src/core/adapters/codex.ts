@@ -55,6 +55,7 @@ interface Parsed {
   title?: string;
   programmatic?: boolean;
   origin?: string;
+  termination?: "interrupted";
 }
 
 // Codex rollout parsing in two pure passes: materialize the JSONL lines into
@@ -184,6 +185,11 @@ function parseCodex(lines: Record<string, unknown>[]): Parsed {
   );
   const calledIds = new Set(rec.filter(isCall).map((r) => str(r.p.call_id) || str(r.p.id)));
 
+  // Codex brackets each turn with task_started … task_complete. A started turn
+  // with no matching completion means the session was cut off mid-turn.
+  const started = rec.filter((r) => isMsg(r, "task_started")).length;
+  const completed = rec.filter((r) => isMsg(r, "task_complete")).length;
+
   return {
     events: toEvents(rec, outputs, calledIds, usageByIndex(rec, models[0])),
     models,
@@ -195,6 +201,7 @@ function parseCodex(lines: Record<string, unknown>[]): Parsed {
     ended: tss.at(-1),
     title: firstUser ? firstLine(str(firstUser.p.message)) : undefined,
     ...(originator && originator !== "codex-tui" ? { programmatic: true, origin: originator } : {}),
+    ...(started > completed ? { termination: "interrupted" as const } : {}),
   };
 }
 
@@ -251,6 +258,7 @@ export function buildCodexSession(lines: Record<string, unknown>[], ctx: CodexPa
     mtime: ctx.mtime,
     events: parsed.events,
     ...(parsed.programmatic ? { programmatic: true, origin: parsed.origin } : {}),
+    ...(parsed.termination ? { termination: parsed.termination } : {}),
   };
 }
 

@@ -256,6 +256,16 @@ main {
   padding: 0 4px;
   white-space: nowrap;
 }
+/* Context-compaction marker (a boundary where the agent condensed its context).
+ * Muted, not alarming — it's normal but forensically important. */
+.compactmark {
+  font-size: 11px;
+  color: var(--think);
+  border: 1px solid var(--think);
+  border-radius: 4px;
+  padding: 0 4px;
+  white-space: nowrap;
+}
 .subof {
   color: var(--think);
 }

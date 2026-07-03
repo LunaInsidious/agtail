@@ -374,6 +374,19 @@ export interface ClaudeParseCtx {
   subagent?: SubagentInfo;
 }
 
+/** Session-termination signal from the transcript. Claude writes no explicit
+ *  "ended" record, but the LAST assistant turn's stop_reason of "max_tokens" means
+ *  that final response was cut off at the output-token cap. Other stop_reasons
+ *  (end_turn/tool_use/stop_sequence) aren't reliable session-end markers, so we
+ *  don't fabricate an "interrupted"/"completed" from them. */
+function claudeTermination(lines: Record<string, unknown>[]): "limit" | undefined {
+  const lastAsst = lines.findLast((l) => {
+    const m = obj(l.message);
+    return str(m.role) === "assistant" && typeof m.stop_reason === "string";
+  });
+  return str(obj(lastAsst?.message).stop_reason) === "max_tokens" ? "limit" : undefined;
+}
+
 /** Normalize a Claude transcript's parsed JSONL lines into a Session. Pure (no
  *  filesystem) so the fs adapter and the browser playground share one parser. */
 export function buildClaudeSession(lines: Record<string, unknown>[], ctx: ClaudeParseCtx): Session {
@@ -383,10 +396,18 @@ export function buildClaudeSession(lines: Record<string, unknown>[], ctx: Claude
 
   for (const line of lines) {
     accumulate(meta, line);
-    for (const e of normalizeLine(line, seenUsage)) raw.push(e);
+    // A compaction summary is injected as a user message flagged isCompactSummary;
+    // tag the event(s) it produces so the boundary is locatable in the timeline.
+    const compact = Boolean(line.isCompactSummary);
+    for (const e of normalizeLine(line, seenUsage)) {
+      if (compact && e.kind === "text") e.compactBoundary = true;
+      raw.push(e);
+    }
   }
 
   const events = withHookTools(mergeToolResults(raw));
+  const compactions = events.filter((e) => e.compactBoundary).length;
+  const termination = claudeTermination(lines);
   const { entrypoint, models } = meta;
   // Machine-driven sessions: launched via the Agent SDK (entrypoint "sdk-cli"/
   // "sdk-py"/…), carrying a programmatically-submitted turn (promptSource
@@ -420,6 +441,8 @@ export function buildClaudeSession(lines: Record<string, unknown>[], ctx: Claude
     messages: meta.messages,
     mtime: ctx.mtime,
     events,
+    ...(compactions ? { compactions } : {}),
+    ...(termination ? { termination } : {}),
     ...(programmatic ? { programmatic: true, origin: entrypoint } : {}),
     ...(sub
       ? {

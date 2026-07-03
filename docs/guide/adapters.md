@@ -51,6 +51,15 @@ Sessions with no actual conversation (e.g. a lone `bridge-session` metadata line
 
 A single corrupt line never aborts a read — agtail parses around it. But it doesn't hide the loss either: for line-oriented (JSONL) transcripts it counts the unparseable lines it dropped, and flags the session **truncated** when the *last* line was the broken one (a strong "cut mid-write" signal — an interrupted or killed session). Both surface as a red ⚠ caveat in the session header (CLI and web), so an incomplete record can't be mistaken for a clean one. It's a forensic caveat, not a filter — clean reads carry no marker.
 
+## Session ending & compaction
+
+Two more execution-mechanics signals, each read from whatever the format actually records — never fabricated, so which ones appear differs by agent:
+
+- **Ending** — flagged only when a session didn't end normally: *interrupted* (a turn started but never completed — Codex writes a `task_started` with no matching `task_complete`) or *limit* (the final turn hit the model's output-token cap — Claude's `stop_reason: max_tokens`). A normal ending carries no marker.
+- **Compaction** — when an agent condenses its own context to stay within the window, agtail marks the boundary (Claude records it as `isCompactSummary`) and counts the boundaries on the session. Detail before a boundary is lost to everything after it, which often explains a later "it forgot X". Codex records no compaction marker, so its sessions never show one.
+
+Both appear in the session header (CLI and web); compaction boundaries are also marked inline in the timeline where they occur.
+
 Besides the native agent dirs, each adapter also reads agtail's own **import store** (`~/.local/share/agtail/imported/<collection>/<agent>/…`, honoring `XDG_DATA_HOME`), which mirrors the native layout. Sessions found there are tagged `imported` and carry their collection name, so synced-in history is searchable alongside local history but never masquerades as a session your agent could resume. See [Cross-machine sync](./sync).
 
 ## Adding an agent

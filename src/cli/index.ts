@@ -12,7 +12,7 @@ import { matchingSessionRefs, search, searchSessions } from "../core/search.js";
 import { aggregateUsage, costForModel, usageSum } from "../core/cost.js";
 import { loadPriceResolver } from "../core/pricing.js";
 import { loadPluginResolver } from "../core/plugins.js";
-import { displayRole, integrityNote, isHumanMessage, toolDescriber } from "../core/format.js";
+import { displayRole, integrityNote, isHumanMessage, terminationNote, toolDescriber } from "../core/format.js";
 import { mask as maskText, maskValue } from "../core/mask.js";
 import { color, shortTs } from "./colors.js";
 import type {
@@ -181,6 +181,11 @@ async function cmdShow(id: string, opts: ShowOpts, global: GlobalOpts) {
   );
   const integrity = integrityNote(sess);
   if (integrity) console.log(color(`  ⚠ transcript ${integrity}`, "amber"));
+  const termination = terminationNote(sess);
+  if (termination) console.log(color(`  ⚠ session ${termination}`, "amber"));
+  if (sess.compactions) {
+    console.log(color(`  ⟳ ${sess.compactions} context compaction${sess.compactions === 1 ? "" : "s"}`, "dim"));
+  }
   console.log();
   const resolve = await loadPriceResolver(sess.models);
   const plugin = await loadPluginResolver();

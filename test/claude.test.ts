@@ -3,8 +3,14 @@ import { fileURLToPath } from "node:url";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { claudeCodeAdapter } from "../src/core/adapters/claude-code.js";
+import { buildClaudeSession, claudeCodeAdapter } from "../src/core/adapters/claude-code.js";
 import { aggregateUsage } from "../src/core/cost.js";
+
+const asst = (content: string, stop_reason: string) => ({
+  type: "assistant",
+  timestamp: "2026-07-02T10:00:00Z",
+  message: { role: "assistant", content, stop_reason },
+});
 
 const fixture = fileURLToPath(new URL("./fixtures/claude-session.jsonl", import.meta.url));
 const hookFixture = fileURLToPath(new URL("./fixtures/claude-hook.jsonl", import.meta.url));
@@ -135,5 +141,33 @@ describe("claude-code adapter", () => {
     expect(u.inputTokens).toBe(2000);
     expect(u.outputTokens).toBe(300);
     expect(u.costUsd).toBeGreaterThan(0);
+  });
+});
+
+describe("claude compaction & termination", () => {
+  const ctx = { id: "s", path: "p", mtime: 0 };
+
+  it("tags and counts a context-compaction boundary", () => {
+    const sess = buildClaudeSession(
+      [
+        { type: "user", timestamp: "2026-07-02T10:00:00Z", message: { role: "user", content: "start the task" } },
+        {
+          type: "user",
+          isCompactSummary: true,
+          timestamp: "2026-07-02T10:05:00Z",
+          message: { role: "user", content: "summary of the earlier conversation" },
+        },
+        asst("carrying on", "end_turn"),
+      ],
+      ctx,
+    );
+    expect(sess.compactions).toBe(1);
+    expect(sess.events.find((e) => e.compactBoundary)?.text).toContain("summary");
+    expect(sess.termination).toBeUndefined(); // end_turn is normal
+  });
+
+  it("flags termination=limit when the final turn hit max_tokens", () => {
+    const sess = buildClaudeSession([asst("truncated resp", "max_tokens")], ctx);
+    expect(sess.termination).toBe("limit");
   });
 });
