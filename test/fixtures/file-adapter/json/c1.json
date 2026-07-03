@@ -1,0 +1,1 @@
+{ "id": "c1", "title": "continue session", "cwd": "/proj", "events": [{ "role": "user", "text": "hi" }, { "role": "assistant", "text": "yo" }] }

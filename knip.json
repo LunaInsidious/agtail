@@ -1,5 +1,5 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "ignore": ["docs/**", "src/web/playground/shims/**"],
+  "ignore": ["docs/**", "src/web/playground/shims/**", "test/fixtures/**"],
   "entry": ["src/web/main.playground.tsx", "vite.config.playground.ts"]
 }
