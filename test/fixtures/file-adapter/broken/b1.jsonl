@@ -1,0 +1,4 @@
+{"role":"user","text":"hello"}
+{bad json here
+{"role":"assistant","text":"hi"}
+{"role":"user","text":"partial line cut mid-wri

@@ -2,11 +2,22 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import type { Agent, Event, Session } from "../lib/api.js";
 import { tag } from "../lib/filters.js";
-import { originLabel, PROGRAMMATIC_TIP, type Seed } from "../lib/util.js";
+import { integrityLabel, originLabel, PROGRAMMATIC_TIP, type Seed } from "../lib/util.js";
 import { EventRow, eventText } from "./EventRow.js";
 
 // A glob tool filter (e.g. "mcp__*") can't seed the exact-match in-session filter.
 const seedTools = (s: Seed) => (s.tool && !s.tool.includes("*") ? new Set([s.tool]) : new Set<string>());
+
+// A red caveat pill when a session's transcript wasn't read cleanly. Extracted so
+// the header's own conditional stays out of Timeline's complexity budget.
+function IntegrityMark({ session }: { session: Session }) {
+  if (!session.truncated && !session.malformedLines) return null;
+  return (
+    <span className="integmark" title={integrityLabel(session)}>
+      ⚠ {session.truncated ? "truncated" : `${session.malformedLines} bad`}
+    </span>
+  );
+}
 
 export const Timeline = memo(function Timeline({
   session,
@@ -171,6 +182,7 @@ export const Timeline = memo(function Timeline({
               </a>
             </span>
           )}
+          <IntegrityMark session={session} />
           <code>{session.id.slice(0, 8)}</code>
           <span>{session.cwd}</span>
           <span>{session.gitBranch ?? "-"}</span>

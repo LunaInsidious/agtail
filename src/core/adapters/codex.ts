@@ -1,12 +1,12 @@
 import { basename, dirname, join, sep } from "node:path";
 import type { Adapter } from "./types.js";
 import type { Event, Session, SessionMeta, Usage } from "../types.js";
-import { iterJsonl } from "../jsonl.js";
+import { collectJsonl } from "../jsonl.js";
 import { hasContent } from "../format.js";
 import { expandHome, mtimeMs, walkFiles } from "../walk.js";
-import { collect, isRecord, obj, str } from "../utils.js";
+import { isRecord, obj, str } from "../utils.js";
 import { collectionDir, collectionOf, listCollections } from "../imported.js";
-import { firstLine } from "./utils.js";
+import { firstLine, tagIntegrity } from "./utils.js";
 
 // OpenAI Codex CLI (v0.14x) stores one rollout JSONL per thread under
 // ~/.codex/sessions/YYYY/MM/DD/rollout-<ts>-<id>.jsonl. A sibling SQLite DB
@@ -255,8 +255,14 @@ export function buildCodexSession(lines: Record<string, unknown>[], ctx: CodexPa
 }
 
 async function readSession(path: string): Promise<Session> {
-  const lines = await collect(iterJsonl(path));
-  return buildCodexSession(lines, { id: basename(path).replace(/\.jsonl$/, ""), path, mtime: await mtimeMs(path) });
+  const { lines, malformed, truncated } = await collectJsonl(path);
+  const sess = buildCodexSession(lines, {
+    id: basename(path).replace(/\.jsonl$/, ""),
+    path,
+    mtime: await mtimeMs(path),
+  });
+  tagIntegrity(sess, { malformed, truncated });
+  return sess;
 }
 
 const isRollout = (n: string) => n.startsWith("rollout-") && n.endsWith(".jsonl");

@@ -47,7 +47,9 @@ A plugin can spawn a headless review via the Agent SDK, but the child session re
 
 Sessions with no actual conversation (e.g. a lone `bridge-session` metadata line) are excluded from listings — there is nothing to open.
 
-## The import store
+## Transcript integrity
+
+A single corrupt line never aborts a read — agtail parses around it. But it doesn't hide the loss either: for line-oriented (JSONL) transcripts it counts the unparseable lines it dropped, and flags the session **truncated** when the *last* line was the broken one (a strong "cut mid-write" signal — an interrupted or killed session). Both surface as a red ⚠ caveat in the session header (CLI and web), so an incomplete record can't be mistaken for a clean one. It's a forensic caveat, not a filter — clean reads carry no marker.
 
 Besides the native agent dirs, each adapter also reads agtail's own **import store** (`~/.local/share/agtail/imported/<collection>/<agent>/…`, honoring `XDG_DATA_HOME`), which mirrors the native layout. Sessions found there are tagged `imported` and carry their collection name, so synced-in history is searchable alongside local history but never masquerades as a session your agent could resume. See [Cross-machine sync](./sync).
 

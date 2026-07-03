@@ -75,6 +75,16 @@ export function toolDescriber(agent: string): (tool: string | undefined, input: 
   return (tool, input) => describe?.(tool, input) ?? summarizeInput(tool, input);
 }
 
+/** A one-line human caveat for a session's transcript integrity, or "" when the
+ *  read was clean. Keeps the wording in one place; the CLI prints it and the web
+ *  mirrors the same phrasing. */
+export function integrityNote(m: { malformedLines?: number; truncated?: boolean }): string {
+  const bits: string[] = [];
+  if (m.truncated) bits.push("truncated (cut mid-write)");
+  if (m.malformedLines) bits.push(`${m.malformedLines} unreadable line${m.malformedLines === 1 ? "" : "s"} dropped`);
+  return bits.join(", ");
+}
+
 /** Text that should be searched for a tool_use event (input + summary). */
 export function toolSearchText(tool: string | undefined, input: unknown): string {
   const parts = [tool ?? "", summarizeInput(tool, input)];

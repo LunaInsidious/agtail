@@ -28,6 +28,16 @@ export function originLabel(origin?: string): string {
 export const PROGRAMMATIC_TIP =
   "Programmatic session — launched by tooling (the Agent SDK, a hook, plugin, script, or the desktop app), not typed interactively by a person.";
 
+/** One-line caveat when a session's transcript wasn't read cleanly, else "".
+ *  Mirrors core/format.ts `integrityNote`; kept web-local for the core↔web
+ *  boundary. */
+export function integrityLabel(s: { malformedLines?: number; truncated?: boolean }): string {
+  const bits: string[] = [];
+  if (s.truncated) bits.push("truncated (cut mid-write)");
+  if (s.malformedLines) bits.push(`${s.malformedLines} unreadable line${s.malformedLines === 1 ? "" : "s"} dropped`);
+  return bits.join(", ");
+}
+
 // Cheap signature to detect that a cached session changed (a live one grew):
 // event count + last-event time. Append-only logs make this reliable enough to
 // avoid a needless re-render when the revalidated copy is identical.

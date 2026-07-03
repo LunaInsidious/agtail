@@ -99,6 +99,41 @@ describe("fileAdapter — unit:file, JSONL (parse)", () => {
     const files = await a.transferFiles();
     expect(files.some((f) => f.endsWith("s1.jsonl"))).toBe(true);
   });
+
+  it("leaves integrity fields unset for a clean transcript", async () => {
+    const a = fileAdapter({
+      agent: "demo",
+      root: dir("active"),
+      match: (n) => n.endsWith(".jsonl"),
+      parse,
+      importStore: false,
+    });
+    const metas = await a.findSessions();
+    const s1 = metas.find((m) => m.id === "s1");
+    if (!s1) throw new Error("s1 not found");
+    const sess = await a.readSession(s1.path);
+    expect(sess.malformedLines).toBeUndefined();
+    expect(sess.truncated).toBeUndefined();
+  });
+
+  it("counts dropped lines and flags a truncated tail", async () => {
+    const a = fileAdapter({
+      agent: "demo",
+      root: dir("broken"),
+      match: (n) => n.endsWith(".jsonl"),
+      parse,
+      importStore: false,
+    });
+    const metas = await a.findSessions();
+    const b1 = metas.find((m) => m.id === "b1");
+    if (!b1) throw new Error("b1 not found");
+    const sess = await a.readSession(b1.path);
+    // Good lines still parse through; the two unreadable lines are tallied, and
+    // because the LAST line was the broken one, the session is flagged truncated.
+    expect(sess.events.map((e) => e.text)).toEqual(["hello", "hi"]);
+    expect(sess.malformedLines).toBe(2);
+    expect(sess.truncated).toBe(true);
+  });
 });
 
 describe("fileAdapter — unit:file, whole-JSON (parseJson)", () => {

@@ -143,6 +143,17 @@ export interface SessionMeta {
   // (the transcript records no direct link). Local installs only; see plugins.ts.
   spawnedBy?: string;
 
+  // Transcript integrity signals for line-oriented (JSONL) transcripts. Set ONLY
+  // when non-clean, so their absence means "clean" and existing callers/tests are
+  // unaffected. A forensic caveat that the on-disk record is imperfect — surfaced
+  // as a reading aid, not a filter dimension.
+  //   malformedLines — count of non-empty lines that failed to parse and were
+  //                    dropped during read (mid-file corruption).
+  //   truncated      — the final non-empty line failed to parse: a strong signal
+  //                    the file was cut mid-write (an interrupted/killed session).
+  malformedLines?: number;
+  truncated?: boolean;
+
   // Subagent (sidechain) linkage. A subagent transcript is a child of the
   // session that spawned it via a Task tool call.
   isSubagent?: boolean;

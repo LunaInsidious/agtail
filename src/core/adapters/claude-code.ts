@@ -2,12 +2,12 @@ import { basename, dirname } from "node:path";
 import { readFileSync, existsSync } from "node:fs";
 import type { Adapter } from "./types.js";
 import type { Event, Session, SessionMeta, Usage } from "../types.js";
-import { iterJsonl } from "../jsonl.js";
+import { collectJsonl } from "../jsonl.js";
 import { hasContent } from "../format.js";
 import { expandHome, mtimeMs, walkFiles } from "../walk.js";
 import { isRecord, obj, str } from "../utils.js";
 import { collectionDir, collectionOf, listCollections } from "../imported.js";
-import { firstLine } from "./utils.js";
+import { firstLine, tagIntegrity } from "./utils.js";
 
 // Claude Code stores one JSONL transcript per session under
 // ~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl (plus subagents/).
@@ -433,15 +433,16 @@ export function buildClaudeSession(lines: Record<string, unknown>[], ctx: Claude
 }
 
 async function readSession(path: string): Promise<Session> {
-  const lines: Record<string, unknown>[] = [];
-  for await (const line of iterJsonl(path)) lines.push(line);
+  const { lines, malformed, truncated } = await collectJsonl(path);
   const subagent = SUBAGENT_RE.test(path) ? readSubagentInfo(path) : undefined;
-  return buildClaudeSession(lines, {
+  const sess = buildClaudeSession(lines, {
     id: basename(path).replace(/\.jsonl$/, ""),
     path,
     mtime: await mtimeMs(path),
     subagent,
   });
+  tagIntegrity(sess, { malformed, truncated });
+  return sess;
 }
 
 const JSONL = ".jsonl";

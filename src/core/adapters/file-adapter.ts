@@ -3,7 +3,8 @@ import { basename, dirname, join, sep } from "node:path";
 import { expandHome, mtimeMs, walkFiles } from "../walk.js";
 import { collectionDir, collectionOf, listCollections } from "../imported.js";
 import { hasContent } from "../format.js";
-import { iterJsonl } from "../jsonl.js";
+import { collectJsonl } from "../jsonl.js";
+import { tagIntegrity } from "./utils.js";
 import type { Event, Session, SessionMeta } from "../types.js";
 import type { Adapter } from "./types.js";
 
@@ -129,9 +130,10 @@ export function fileAdapter(cfg: FileAdapterConfig): Adapter {
     if (readFn) return readFn(path, ctx);
     if (parseJsonFn) return parseJsonFn(JSON.parse(await readFile(path, "utf-8")), ctx);
     if (parseFn) {
-      const lines: Record<string, unknown>[] = [];
-      for await (const line of iterJsonl(path)) lines.push(line);
-      return parseFn(lines, ctx);
+      const { lines, malformed, truncated } = await collectJsonl(path);
+      const sess = parseFn(lines, ctx);
+      tagIntegrity(sess, { malformed, truncated });
+      return sess;
     }
     throw new Error("fileAdapter: no read mode"); // unreachable (validated above)
   };

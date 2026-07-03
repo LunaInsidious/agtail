@@ -62,6 +62,10 @@ export interface SessionMeta {
   importedFrom?: string;
   programmatic?: boolean;
   origin?: string;
+  // Transcript integrity signals (set only when non-clean). malformedLines =
+  // unparseable lines dropped on read; truncated = final line was cut mid-write.
+  malformedLines?: number;
+  truncated?: boolean;
   /** For an SDK-spawned session: the plugin that launched it (inferred). */
   spawnedBy?: string;
   isSubagent?: boolean;
