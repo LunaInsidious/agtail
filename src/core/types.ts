@@ -2,15 +2,11 @@
 // maps its own transcript format into these shapes so the rest of agtail —
 // search, CLI, server, web — is agent-agnostic.
 
-export type Agent = "claude-code" | "codex";
-
-export const AGENTS: Agent[] = ["claude-code", "codex"];
-
-/** Type guard for {@link Agent}, so a parsed string list narrows to Agent[]
- *  via `.filter(isAgent)` without a cast. */
-export function isAgent(v: unknown): v is Agent {
-  return v === "claude-code" || v === "codex";
-}
+// An agent id. Open string: the built-in adapters use "claude-code"/"codex", and
+// new agents are added as more in-tree adapters (see core/adapters/register-node.ts).
+// Validation is registry-driven — the set of valid agents is whatever adapters are
+// registered (see adapters/registeredAgents), not a fixed union.
+export type Agent = string;
 
 /** A tri-state filter over a boolean session attribute: include all, only the
  *  ones with it, or exclude them. Default everywhere is "all". */
@@ -80,6 +76,10 @@ export interface Event {
   toolUseId?: string;
   input?: unknown;
   result?: { isError: boolean; text: string };
+  // A one-line presentation summary of `input`, attached at display time by the
+  // API/CLI (via the agent's adapter describeTool, or the core fallback) — NOT
+  // set by normalization. Lets the browser render agent-specific tools it can't summarize.
+  toolSummary?: string;
 
   // kind === "hook": the lifecycle event it fired on (SessionStart, PreToolUse,
   // PostToolUse, Stop, …) — used to group/toggle hooks by type.

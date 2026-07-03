@@ -1,8 +1,6 @@
 // Constants, persistence and history-snapshot helpers for the web UI.
 import type { Agent, Filters } from "./api.js";
 
-export const AGENTS: Agent[] = ["claude-code", "codex"];
-
 // Search result cap (matching events). User-selectable; 0 means no limit ("All").
 // Hitting the cap means results were truncated and there may be more ("500+").
 const DEFAULT_LIMIT = 500;

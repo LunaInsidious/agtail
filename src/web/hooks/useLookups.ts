@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { apiFacets, apiSources } from "../lib/api.js";
 
-type Facets = { tools: string[]; cwds: string[]; models: string[] };
+type Facets = { tools: string[]; cwds: string[]; models: string[]; agents: string[] };
 type Source = { name: string; count: number };
 
 /** Lookup data for the filter UI: facets (tool/model/cwd options) and imported
@@ -12,7 +12,7 @@ export function useLookups(
   showFilters: boolean,
   refreshNonce: number,
 ): { facets: Facets; sources: Source[]; facetsLoading: boolean } {
-  const [facets, setFacets] = useState<Facets>({ tools: [], cwds: [], models: [] });
+  const [facets, setFacets] = useState<Facets>({ tools: [], cwds: [], models: [], agents: [] });
   const [sources, setSources] = useState<Source[]>([]);
   const [facetsLoading, setFacetsLoading] = useState(false);
 

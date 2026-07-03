@@ -118,7 +118,9 @@ export const EventRow = memo(function EventRow({ e, highlight }: { e: Event; hig
 });
 
 function ToolHead({ e, highlight }: { e: Event; highlight?: string }) {
-  const summary = summarizeInput(e.tool, e.input);
+  // Prefer the server-computed summary (honors the agent's adapter, so plugin
+  // tools render); fall back to the local mirror when it's absent.
+  const summary = e.toolSummary ?? summarizeInput(e.tool, e.input);
   // When the in-session search matches input/result, default the detail open —
   // but leave it user-toggleable (don't force it).
   const inputStr = pretty(e.input);

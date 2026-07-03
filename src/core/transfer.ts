@@ -2,7 +2,6 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import type { Agent } from "./types.js";
-import { AGENTS } from "./types.js";
 import type { RootOverrides } from "./adapters/types.js";
 import { selectAdapters } from "./adapters/index.js";
 import { collectionDir, sanitizeCollection } from "./imported.js";
@@ -107,8 +106,8 @@ export async function importSessions(
 }
 
 /** Resolve each agent's destination base for the chosen import mode. For native,
- *  use the local adapter's base (honoring --dir overrides); the map always has
- *  every agent (selectAdapters(AGENTS) builds all of them). */
+ *  use the local adapter's base (honoring --dir overrides); the map has every
+ *  registered agent (selectAdapters(undefined) builds all of them). */
 function baseResolver(
   mode: "native" | "agtail",
   overrides?: RootOverrides,
@@ -118,7 +117,7 @@ function baseResolver(
     const col = sanitizeCollection(collection ?? "imported");
     return (agent) => collectionDir(col, agent);
   }
-  const nativeBase = new Map(selectAdapters(AGENTS, overrides).map((a) => [a.agent, a.base]));
+  const nativeBase = new Map(selectAdapters(undefined, overrides).map((a) => [a.agent, a.base]));
   return (agent) => {
     const base = nativeBase.get(agent);
     if (base === undefined) throw new Error(`no adapter for agent: ${agent}`);

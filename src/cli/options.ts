@@ -4,6 +4,7 @@
 export interface GlobalOpts {
   claudeDir?: string;
   codexDir?: string;
+  dir?: string[]; // "<agent>=<path>" root overrides for any in-tree agent
   mask?: boolean;
   archived?: string; // "all" (default) | "only" | "none"
   programmatic?: string; // "all" (default) | "only" | "none"

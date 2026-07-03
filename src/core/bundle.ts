@@ -1,5 +1,4 @@
 import type { Agent } from "./types.js";
-import { isAgent } from "./types.js";
 import { isRecord } from "./utils.js";
 
 // The portable export bundle shape + its validator. Kept fs-free (separate from
@@ -22,9 +21,16 @@ export function assertBundle(value: unknown): asserts value is Bundle {
   }
   if (!Array.isArray(value.files)) throw new Error("bundle.files must be an array");
   for (const f of value.files) {
-    if (!isRecord(f) || typeof f.agent !== "string" || typeof f.rel !== "string" || typeof f.content !== "string") {
+    if (
+      !isRecord(f) ||
+      typeof f.agent !== "string" ||
+      !f.agent ||
+      typeof f.rel !== "string" ||
+      typeof f.content !== "string"
+    ) {
       throw new Error("bundle.files entries must have string agent/rel/content");
     }
-    if (!isAgent(f.agent)) throw new Error(`bundle.files has unknown agent: ${f.agent}`);
+    // agent is any non-empty string now (in-tree adapters register their own
+    // ids); the import destination is resolved against the local adapter registry.
   }
 }

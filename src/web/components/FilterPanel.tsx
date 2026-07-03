@@ -1,6 +1,6 @@
 import type { Filters } from "../lib/api.js";
 import { homeShort, tag } from "../lib/filters.js";
-import { AGENTS, LIMIT_OPTIONS } from "../lib/state.js";
+import { LIMIT_OPTIONS } from "../lib/state.js";
 import { CheckList } from "./CheckList.js";
 
 // The filters popover: tool/model/project checklists, date range, agent /
@@ -40,7 +40,7 @@ export function FilterPanel({
   chipCount,
 }: {
   filters: Filters;
-  facets: { tools: string[]; cwds: string[]; models: string[] };
+  facets: { tools: string[]; cwds: string[]; models: string[]; agents: string[] };
   facetsLoading: boolean;
   limit: number;
   setLimit: (n: number) => void;
@@ -87,7 +87,7 @@ export function FilterPanel({
       <div className="frow">
         <span className="lbl">agent</span>
         <span className="agents">
-          {AGENTS.map((a) => (
+          {facets.agents.map((a) => (
             <label key={a} className={filters.agents.includes(a) ? "on" : ""}>
               <input
                 type="checkbox"

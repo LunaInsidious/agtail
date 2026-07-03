@@ -1,5 +1,8 @@
 // Types mirror src/core/types.ts (kept in sync by hand; the API is the contract).
-export type Agent = "claude-code" | "codex";
+// Agent is an open string: built-ins are "claude-code"/"codex", but adapter
+// plugins register their own ids server-side; the web learns the live set from
+// /api/facets (facets.agents), never from a hardcoded list.
+export type Agent = string;
 type TriFilter = "all" | "only" | "none";
 type ArchivedFilter = TriFilter;
 type ProgrammaticFilter = TriFilter;
@@ -25,6 +28,9 @@ export interface Event {
   toolUseId?: string;
   input?: unknown;
   result?: { isError: boolean; text: string };
+  // One-line tool_use summary computed by the server/CLI (via the agent's adapter,
+  // so plugin tools render here too). Preferred over the local summarizeInput mirror.
+  toolSummary?: string;
   hookEvent?: string;
   // Hook command + the plugin it belongs to (resolved by the server, local only).
   command?: string;
@@ -121,7 +127,7 @@ function qs(params: Record<string, string | string[] | undefined>): string {
   return s ? "?" + s : "";
 }
 
-async function fetchFacets(): Promise<{ tools: string[]; cwds: string[]; models: string[] }> {
+async function fetchFacets(): Promise<{ tools: string[]; cwds: string[]; models: string[]; agents: string[] }> {
   const r = await fetch("/api/facets");
   return r.json();
 }

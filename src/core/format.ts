@@ -3,6 +3,7 @@
 
 import type { Event, EventKind } from "./types.js";
 import { obj } from "./utils.js";
+import { selectAdapters } from "./adapters/index.js";
 
 const CONTENT_KINDS = new Set<EventKind>(["text", "tool_use", "thinking"]);
 
@@ -62,6 +63,16 @@ export function summarizeInput(tool: string | undefined, input: unknown): string
         return String(i);
       }
   }
+}
+
+/** Resolve a tool-summary function for one agent, honoring its adapter's optional
+ *  `describeTool` hook (so an adapter can render its own tools) and falling back to
+ *  {@link summarizeInput}. Resolves the adapter once, so the returned closure is
+ *  cheap to call per event. */
+export function toolDescriber(agent: string): (tool: string | undefined, input: unknown) => string {
+  const adapter = selectAdapters([agent]).find((a) => a.agent === agent);
+  const describe = adapter?.describeTool?.bind(adapter);
+  return (tool, input) => describe?.(tool, input) ?? summarizeInput(tool, input);
 }
 
 /** Text that should be searched for a tool_use event (input + summary). */

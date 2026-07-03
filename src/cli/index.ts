@@ -2,9 +2,9 @@ import { Command } from "commander";
 import { readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import type { Agent, ArchivedFilter, ProgrammaticFilter, TriFilter } from "../core/types.js";
-import { AGENTS, isAgent, isEventKind } from "../core/types.js";
+import { isEventKind } from "../core/types.js";
 import type { RootOverrides } from "../core/adapters/types.js";
-import { findAllSessions, resolveSession } from "../core/adapters/index.js";
+import { findAllSessions, registeredAgents, resolveSession } from "../core/adapters/index.js";
 import { registerNodeAdapters } from "../core/adapters/register-node.js";
 import { assertBundle, exportSessions, importSessions } from "../core/transfer.js";
 import { listCollections } from "../core/imported.js";
@@ -12,7 +12,7 @@ import { matchingSessionRefs, search, searchSessions } from "../core/search.js";
 import { aggregateUsage, costForModel, usageSum } from "../core/cost.js";
 import { loadPriceResolver } from "../core/pricing.js";
 import { loadPluginResolver } from "../core/plugins.js";
-import { displayRole, isHumanMessage, summarizeInput } from "../core/format.js";
+import { displayRole, isHumanMessage, toolDescriber } from "../core/format.js";
 import { mask as maskText, maskValue } from "../core/mask.js";
 import { color, shortTs } from "./colors.js";
 import type {
@@ -25,8 +25,6 @@ import type {
   ShowOpts,
   StatsOpts,
 } from "./options.js";
-
-registerNodeAdapters(); // wire the fs adapters before any command reads sessions
 
 const HOME = homedir();
 const tilde = (p?: string) => (p ?? "?").replace(HOME, "~");
@@ -47,6 +45,11 @@ function overrides(o: GlobalOpts): RootOverrides {
   const ov: RootOverrides = {};
   if (o.claudeDir) ov["claude-code"] = o.claudeDir;
   if (o.codexDir) ov["codex"] = o.codexDir;
+  // --dir <agent>=<path>: generic root override for any in-tree agent.
+  for (const spec of o.dir ?? []) {
+    const eq = spec.indexOf("=");
+    if (eq > 0) ov[spec.slice(0, eq)] = spec.slice(eq + 1);
+  }
   return ov;
 }
 
@@ -56,12 +59,13 @@ function parseAgents(v?: string): Agent[] | undefined {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  const bad = items.filter((i) => !isAgent(i));
+  const valid = new Set(registeredAgents());
+  const bad = items.filter((i) => !valid.has(i));
   if (bad.length) {
-    console.error(`unknown agent(s): ${bad.join(", ")}. valid: ${AGENTS.join(", ")}`);
+    console.error(`unknown agent(s): ${bad.join(", ")}. valid: ${[...valid].join(", ")}`);
     process.exit(2);
   }
-  return items.filter(isAgent);
+  return items;
 }
 
 const collect = (v: string, prev: string[]) => prev.concat([v]);
@@ -178,6 +182,7 @@ async function cmdShow(id: string, opts: ShowOpts, global: GlobalOpts) {
   console.log();
   const resolve = await loadPriceResolver(sess.models);
   const plugin = await loadPluginResolver();
+  const describe = toolDescriber(sess.agent); // agent's own tool summaries (plugins), else core fallback
   // Per-turn token/cost badge for events carrying usage.
   const usageBadge = (e: (typeof sess.events)[number]) => {
     if (!e.usage) return "";
@@ -190,7 +195,7 @@ async function cmdShow(id: string, opts: ShowOpts, global: GlobalOpts) {
     const ts = color(shortTs(e.ts), "gray");
     const sc = e.sidechain ? color("¦", "violet") + " " : "  ";
     if (e.kind === "tool_use") {
-      const inp = summarizeInput(e.tool, doMask ? maskValue(e.input) : e.input);
+      const inp = describe(e.tool, doMask ? maskValue(e.input) : e.input);
       console.log(`${ts} ${sc}${color("⚙ " + (e.tool ?? "?"), "amber")}  ${inp}${usageBadge(e)}`);
       if (e.result) {
         const tag = e.result.isError ? color("✗", "red") : color("✓", "green");
@@ -331,7 +336,8 @@ program
   .option("--codex-dir <path>", "override Codex sessions root (~/.codex/sessions)")
   .option("--archived <mode>", "archived sessions: all (default) | only | none", "all")
   .option("--programmatic <mode>", "programmatic (SDK-driven) sessions: all (default) | only | none", "all")
-  .option("--mask", "redact secrets in output");
+  .option("--mask", "redact secrets in output")
+  .option("--dir <agent=path>", "override an agent's session root (repeatable)", collect, []);
 
 // The --agent option is shared by every subcommand.
 const AGENT_OPT = "--agent <agents>";
@@ -418,6 +424,8 @@ program
   .description("launch the local web UI (127.0.0.1 only)")
   .option("--port <n>", "port", "8765")
   .action((opts) => cmdServe(opts, g()));
+
+registerNodeAdapters(); // wire the in-tree fs adapters before any command reads sessions
 
 program.parseAsync().catch((err) => {
   console.error(err instanceof Error ? err.message : err);
