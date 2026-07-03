@@ -1,0 +1,17 @@
+- agent sdkのやつはuser表記やめてほしい
+- codexでもtoolが判別できるように
+- maskが実際仕事してるのかとかが今は分かりにくいのでmaskする対象とか、その結果をみえるように
+- hooksを子供にしたい
+- exploreってわかりにくくない？
+- メッセージ単体保存
+- やっぱりAllは欲しいかも。コンテキストスイッチもそんなにない。何セッション分の幾つがresultみたいなのも知りたい時もある
+- 最初のsessionsの中身が一瞬Noneになる。ローディングしてほしい
+- [done] 他のエージェントも対応できるように（完全 in-tree に確定。ランタイム plugin ローダ=--adapter/agtail/plugin は撤去し、CASS/AgentsView と同じく in-tree adapter + fileAdapter/sqliteAdapter ヘルパで対応）
+- 時刻も表示
+- 具体例をドキュメントに
+- [done] adapter に root override 手段を（--dir <agent>=<path> 実装。register-node の create(overrides) で overrides[agent] を読む。旧 --adapter-dir から改名）
+- [done] adapter の import store 連携を楽に（fileAdapter/sqliteAdapter は自動。手書き Adapter 用に collectionDir/collectionOf/listCollections を src/core/imported.ts で内部提供）
+- [done] fileAdapter 実例（docs/guide/adapters.md に parse/parseJson/dir/sqlite の inline 実例。in-tree の register-node へ追記する形に統一）
+- export --mask（証拠ポータビリティの要。現状バンドルは生の内容=秘密含む。maskText/maskValue を流用してバンドル内を伏字化する --mask を追加）
+- [done] sqliteAdapter ヘルパ（node:sqlite=依存ゼロで実装。listSessions/readSession の2関数のみ。OpenCode/Goose/Cursor の実アダプタ化は各自の SQL を書けば可）
+- [done] fileAdapter の unit 拡張（unit:file/dir × parse/parseJson/read に一般化。Continue/Cline/Roo/OpenHands まで1ヘルパで対応。Aider=1ファイル多セッションのみ手書き Adapter 送り）
