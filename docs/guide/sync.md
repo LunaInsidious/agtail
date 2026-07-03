@@ -1,6 +1,12 @@
-# Cross-machine sync
+# Import & export
 
-Transcripts live per-machine. agtail can **export** a set of sessions into one portable JSON bundle and **import** it on another machine, so a single viewer can search across several machines — or one auditor can review several people's histories side by side.
+Transcripts live per-machine. agtail can **export** a set of sessions into one portable JSON bundle and **import** it elsewhere, so a single viewer can search across several machines — or one auditor can review several people's histories side by side.
+
+Think of this as **evidence portability, not history sync**: the point is a *shareable, reviewable record* and *ingesting another machine's or person's sessions as provenance-tagged evidence*, searchable in one place. Its edge over `git`/`rsync` of the raw transcript dirs is normalization, collection provenance, and (planned) redaction — not keeping histories continuously in sync, which is **not a goal** (use `git`/`rsync` for that).
+
+::: warning Bundles carry raw contents
+An export bundle currently contains each transcript's **raw** contents, secrets included. It's plain, diffable JSON — inspect and redact it before sharing. A masked export (`--mask`) that redacts secrets in the bundle is planned; until then, treat bundles as sensitive.
+:::
 
 ## Export
 

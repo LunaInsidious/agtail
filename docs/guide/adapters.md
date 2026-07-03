@@ -53,4 +53,83 @@ Besides the native agent dirs, each adapter also reads agtail's own **import sto
 
 ## Adding an agent
 
-Implement the `Adapter` interface (`roots()`, `findSessions()`, `readSession()`) so it emits the normalized `Session` / `Event` shapes, then register it. No other layer needs to change.
+New agents are added **in-tree** — the same way Claude Code and Codex ship. There is no runtime plugin loader to fork around: write an adapter, register it, done. (This mirrors how the comparable local viewers work; see [the positioning notes](./vs-otel).)
+
+The steps:
+
+1. Write an `Adapter` — either hand-written or via a helper (below).
+2. Register it in `registerNodeAdapters` (`src/core/adapters/register-node.ts`):
+   ```ts
+   registerAdapters((overrides) => [
+     claudeCodeAdapter(overrides["claude-code"]),
+     codexAdapter(overrides["codex"]),
+     myAgentAdapter(overrides["my-agent"]),   // ← added
+   ]);
+   ```
+   The `Agent` id is an open string and validation is registry-driven, so nothing else needs to change — the id flows through CLI filters, facets and the web UI automatically. Reading `overrides["my-agent"]` is what lets `--dir my-agent=<path>` point the agent at a non-default session root.
+
+An adapter emits the normalized `Session` / `Event` shapes and optionally implements `describeTool(tool, input)` to render its own tool calls as a one-line summary (return `undefined` to defer to the core summarizer, which the CLI **and** the web both use).
+
+The built-ins hand-write the full `Adapter` interface (`roots()`, `findSessions()`, `readSession()`, `transferFiles()`) because their formats are idiosyncratic. For common on-disk shapes you don't have to — two internal helpers cover most agents.
+
+### The easy path: `fileAdapter`
+
+For the common shape — **one JSONL file per session under a directory** — `fileAdapter` (`src/core/adapters/file-adapter.ts`) writes the `Adapter` for you: it handles directory walking, the import-store scan, archived tagging, empty-stub skipping and export. You supply only `parse` (the raw-records → `Session` mapping):
+
+```ts
+import { fileAdapter } from "./file-adapter.js";
+
+export const myAgentAdapter = (root?: string): Adapter =>
+  fileAdapter({
+    agent: "my-agent",
+    root: root ?? "~/.my-agent/sessions",
+    match: (name) => name.endsWith(".jsonl"),
+    parse: (lines, ctx) => ({
+      agent: "my-agent",
+      id: ctx.id,          // filename fallback; return the real id here if it lives in the records
+      path: ctx.path,
+      mtime: ctx.mtime,
+      title: "…", messages: lines.length,
+      events: lines.map(toEvent),   // ← the only real work
+    }),
+  });
+```
+
+`fileAdapter` covers most on-disk layouts. Pick a **discovery unit** (`unit`) and exactly one **read mode**:
+
+| your layout | `unit` | read mode | examples |
+| --- | --- | --- | --- |
+| one JSONL file per session | `"file"` (default) | `parse(lines, ctx)` | Codex, Gemini CLI |
+| one whole-JSON file per session | `"file"` | `parseJson(data, ctx)` | Continue |
+| one directory per session/task | `"dir"` | `read(path, ctx)` | Cline, Roo Code, OpenHands |
+| anything else on a file/dir unit | either | `read(path, ctx)` | custom |
+
+`match` selects which files (unit:"file", required) or filters subdirectory names (unit:"dir", optional). Other options: `base`, `archivedRoot` (a second root whose sessions are tagged `archived`), `transferMatch`, `importStore` (default true), `skipEmpty` (default true). A misconfigured call (no/2+ read modes, missing `match`) throws at registration.
+
+`buildSession(ctx, events, extra)` (same module) derives the session's title, start/end times, models and message count from the events, so `parse` usually just maps records → events and hands them off.
+
+The one shape `fileAdapter` does **not** model is *a single file holding many sessions* (e.g. Aider's `.aider.chat.history.md`) — that breaks unit == session; hand-write the `Adapter` interface directly. SQLite-backed agents use `sqliteAdapter` (below).
+
+### SQLite-backed agents: `sqliteAdapter`
+
+Some agents keep history in a single SQLite database with many sessions as rows (OpenCode, Goose, Cursor, …). Use `sqliteAdapter` (`src/core/adapters/sqlite-adapter.ts`) — it opens the DB read-only via Node's built-in `node:sqlite` (no dependency; loaded lazily), tolerates a missing file, and maps the synthetic session id ↔ path — you write only the two agent-specific queries:
+
+```ts
+import { sqliteAdapter } from "./sqlite-adapter.js";
+
+export const myAgentAdapter = (root?: string): Adapter =>
+  sqliteAdapter({
+    agent: "my-agent",
+    db: root ?? "~/.my-agent/history.db",
+    listSessions: (db) => db.prepare("select id, title, cwd from sessions").all().map(rowToMeta),
+    readSession: (db, id) => rowsToSession(db, id),   // query by id, build the Session
+  });
+```
+
+Rows come back as plain objects with `unknown` fields — narrow them yourself. Note: `node:sqlite` is experimental (prints a one-time warning) and there is **no export** for DB-backed sessions (no per-session native file). Cursor in particular has a reverse-engineered, version-drifting schema and several overlapping stores — validate against the installed version.
+
+### The import store
+
+`fileAdapter` / `sqliteAdapter` already scan agtail's import store (synced-in histories). Hand-written `Adapter`s that want the same behaviour import `collectionDir`, `collectionOf`, `listCollections` from `src/core/imported.ts` — the Codex adapter is the reference example.
+
+**Browser / playground note.** These adapters are **Node-only** (they use `node:fs` / `node:sqlite`), so they run in the CLI and the self-hosted `agtail serve`. The pure-web playground keeps `node:fs` out via dependency injection and ships a fixed in-memory adapter set. (Separately, "adapter" here is unrelated to Claude Code *marketplace* plugins, which agtail only reads for [hook/SDK attribution](#hooks-plugin-attribution).)
