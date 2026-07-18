@@ -1,20 +1,22 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Agent, ArchivedFilter, ProgrammaticFilter, Session } from "../core/types.js";
-import { AGENTS, isAgent, isEventKind } from "../core/types.js";
+import { isEventKind } from "../core/types.js";
 import type { RootOverrides } from "../core/adapters/types.js";
-import { findAllSessions, resolveSession, selectAdapters } from "../core/adapters/index.js";
+import { findAllSessions, registeredAgents, resolveSession, selectAdapters } from "../core/adapters/index.js";
 import { registerNodeAdapters } from "../core/adapters/register-node.js";
 import { collectionDir, listCollections } from "../core/imported.js";
 import { walkFiles } from "../core/walk.js";
 import type { SearchFilters } from "../core/search.js";
 import { matchingSessionRefs, searchSessionHits } from "../core/search.js";
 import { aggregateUsage, costForModel, usageSum } from "../core/cost.js";
+import type { PriceResolver } from "../core/pricing.js";
 import { loadPriceResolver } from "../core/pricing.js";
 import type { PluginResolver } from "../core/plugins.js";
 import { loadPluginResolver } from "../core/plugins.js";
 import { assertBundle, exportSessions, importSessions } from "../core/transfer.js";
 import { isRecord } from "../core/utils.js";
 import { mask as maskText, maskValue } from "../core/mask.js";
+import { toolDescriber } from "../core/format.js";
 
 export interface ApiOptions {
   overrides?: RootOverrides;
@@ -24,10 +26,11 @@ export interface ApiOptions {
 
 function parseAgents(v: string | null): Agent[] | undefined {
   if (!v) return undefined;
+  const valid = new Set(registeredAgents());
   const items = v
     .split(",")
     .map((s) => s.trim())
-    .filter(isAgent);
+    .filter((s) => valid.has(s));
   return items.length ? items : undefined;
 }
 
@@ -50,6 +53,19 @@ function once<T>(factory: () => T): () => T {
   };
 }
 
+/** Attach display-only fields to a session's (already-masked) events for the API
+ *  response: per-turn tokens/cost on usage events, the owning plugin on hooks, and
+ *  a one-line tool summary (via the agent's adapter, so plugin tools render too). */
+function enrichEvents(out: Session, resolve: PriceResolver, plugin: PluginResolver) {
+  const describe = toolDescriber(out.agent);
+  return out.events.map((e) => {
+    if (e.usage) return { ...e, tokens: usageSum(e.usage), cost: costForModel(e.usage, e.model, resolve) };
+    if (e.kind === "hook" && e.command) return { ...e, plugin: plugin.forCommand(e.command) };
+    if (e.kind === "tool_use") return { ...e, toolSummary: describe(e.tool, e.input) };
+    return e;
+  });
+}
+
 function maskSession(s: Session): Session {
   return {
     ...s,
@@ -70,20 +86,26 @@ function maskSession(s: Session): Session {
  */
 /** Distinct tool names + cwds across all sessions, for selectable filters. */
 // eslint-disable-next-line sonarjs/cognitive-complexity -- full-scan facet collector: nested loops over adapters → sessions → events to gather distinct tools/cwds/models.
-async function computeFacets(ov: RootOverrides): Promise<{ tools: string[]; cwds: string[]; models: string[] }> {
+async function computeFacets(
+  ov: RootOverrides,
+): Promise<{ tools: string[]; cwds: string[]; models: string[]; agents: string[] }> {
   const tools = new Set<string>();
   const cwds = new Set<string>();
   const models = new Set<string>();
+  const agents = new Set<string>();
   for (const a of selectAdapters(undefined, ov)) {
+    agents.add(a.agent);
     const metas = await a.findSessions();
+    // Read one session at a time — Promise.all over an entire agent's history
+    // holds every session's events at once and OOMs on a large real store.
     for (const m of metas) {
       if (m.cwd) cwds.add(m.cwd);
       for (const mm of m.models ?? (m.model ? [m.model] : [])) models.add(mm);
+      const s = await a.readSession(m.path);
+      for (const e of s.events) if (e.kind === "tool_use" && e.tool) tools.add(e.tool);
     }
-    const sessions = await Promise.all(metas.map((m) => a.readSession(m.path)));
-    for (const s of sessions) for (const e of s.events) if (e.kind === "tool_use" && e.tool) tools.add(e.tool);
   }
-  return { tools: [...tools].sort(), cwds: [...cwds].sort(), models: [...models].sort() };
+  return { tools: [...tools].sort(), cwds: [...cwds].sort(), models: [...models].sort(), agents: [...agents].sort() };
 }
 
 /** The plugin that spawned an SDK session, by matching its prompt to a plugin's
@@ -113,7 +135,7 @@ async function listSources(): Promise<{ name: string; count: number }[]> {
   return Promise.all(
     listCollections().map(async (name) => {
       const perAgent = await Promise.all(
-        AGENTS.map((a) => walkFiles(collectionDir(name, a), isJsonlFile).then((f) => f.length)),
+        registeredAgents().map((a) => walkFiles(collectionDir(name, a), isJsonlFile).then((f) => f.length)),
       );
       return { name, count: perAgent.reduce((sum, n) => sum + n, 0) };
     }),
@@ -130,7 +152,8 @@ const optStr = (v: unknown): string | undefined => (typeof v === "string" && v ?
 function parseExportFilters(body: unknown): SearchFilters | null {
   if (!isRecord(body) || !isRecord(body.filters)) return null;
   const f = body.filters;
-  const agents = strArray(f.agents).filter(isAgent);
+  const validAgents = new Set(registeredAgents());
+  const agents = strArray(f.agents).filter((s) => validAgents.has(s));
   return {
     pattern: optStr(f.q),
     agents: agents.length ? agents : undefined,
@@ -147,7 +170,7 @@ function parseExportFilters(body: unknown): SearchFilters | null {
 }
 
 export function createApiHandler(opts: ApiOptions = {}) {
-  registerNodeAdapters(); // fs adapters; the browser playground registers its own
+  registerNodeAdapters(); // in-tree fs adapters; the browser playground registers its own
   const ov = opts.overrides ?? {};
   const defaultLimit = opts.searchLimit ?? 500;
   // Facets are a full scan, so compute once and cache for the process lifetime.
@@ -203,12 +226,7 @@ export function createApiHandler(opts: ApiOptions = {}) {
         const resolve = await loadPriceResolver(out.models ?? (out.model ? [out.model] : []));
         // Resolve which plugin each hook's command belongs to (local install only).
         const plugin = await loadPluginResolver();
-        // Attach per-turn tokens/cost to usage events, and the plugin to hooks.
-        const events = out.events.map((e) => {
-          if (e.usage) return { ...e, tokens: usageSum(e.usage), cost: costForModel(e.usage, e.model, resolve) };
-          if (e.kind === "hook" && e.command) return { ...e, plugin: plugin.forCommand(e.command) };
-          return e;
-        });
+        const events = enrichEvents(out, resolve, plugin);
         const firstUser = out.events.find((e) => e.kind === "text" && e.role === "user" && e.text)?.text;
         const spawnedBy = spawnerOf(out, firstUser, plugin);
         sendJson(200, { ...out, events, usage: aggregateUsage(out.events, resolve), spawnedBy });

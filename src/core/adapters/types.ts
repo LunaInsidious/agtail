@@ -18,7 +18,14 @@ export interface Adapter {
   /** Absolute paths of all native transcript files to export (NOT the import
    *  store — export only re-exports native sessions). */
   transferFiles(): Promise<string[]>;
+  /** Optional: render a one-line summary of a tool_use input for this agent's own
+   *  tools. Return undefined to defer to the core summarizer (core/format.ts
+   *  summarizeInput). Lets an adapter present exotic tools instead of raw JSON. */
+  describeTool?(tool: string | undefined, input: unknown): string | undefined;
 }
 
-/** Per-agent root overrides (from --dir), keyed by agent. */
+/** Per-agent root overrides (from --dir / --claude-dir / --codex-dir), keyed by agent. */
 export type RootOverrides = Partial<Record<Agent, string>>;
+
+/** Builds the set of in-tree adapters (optionally honoring per-agent root overrides). */
+export type AdapterFactory = (overrides: RootOverrides) => Adapter[];

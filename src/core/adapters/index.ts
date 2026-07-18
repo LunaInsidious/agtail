@@ -1,6 +1,6 @@
 import type { Agent, ArchivedFilter, ProgrammaticFilter, Session, SessionMeta } from "../types.js";
 import { matchArchived, matchProgrammatic, matchSource } from "../types.js";
-import type { Adapter, RootOverrides } from "./types.js";
+import type { Adapter, AdapterFactory, RootOverrides } from "./types.js";
 
 export type { Adapter } from "./types.js";
 
@@ -8,7 +8,6 @@ export type { Adapter } from "./types.js";
 // downstream — search, listing) carries no dependency on the filesystem adapters.
 // The Node entry points register the real fs adapters (registerNodeAdapters); the
 // browser playground registers in-memory ones. Keeps node:fs out of the SPA bundle.
-export type AdapterFactory = (overrides: RootOverrides) => Adapter[];
 const registry: { factory?: AdapterFactory } = {};
 
 /** Register the adapter set. Call once at startup before any listing/search. */
@@ -22,6 +21,13 @@ function buildAdapters(overrides: RootOverrides = {}): Adapter[] {
     throw new Error("no adapters registered — call registerAdapters() at startup (see adapters/register-node.ts)");
   }
   return registry.factory(overrides);
+}
+
+/** The agent ids of all registered adapters (built-ins + plugins). The single
+ *  source of truth for "which agents exist now" — used to validate agent filters
+ *  instead of a hardcoded union. Throws if called before registration. */
+export function registeredAgents(): string[] {
+  return buildAdapters().map((a) => a.agent);
 }
 
 /** Select adapters, optionally narrowed to a subset of agents. */

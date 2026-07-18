@@ -49,6 +49,26 @@ node dist/cli/index.js serve
 
 詳細は [CLI](./cli) と [Web UI](./web-ui) を参照してください。
 
+## スコープと non-goals
+
+agtail は **ローカル・ゼロ設定・読み取り専用のフォレンジックビューア**。横断ブラウズや
+全文検索は前提(table stakes)で、真価は **深さ** ── メッセージやツール呼び出しの先にある
+*実行メカニクス* を保存済みトランスクリプトから再構成する: hook 発火（PreToolUse /
+PostToolUse / Stop）、subagent(Task) の入れ子、plugin 帰属、SDK/programmatic 起源 を、
+後追いで・計装なしに。意図的に **観測(observability)ツールではありません**。以下はやらない
+方針です:
+
+- fleet メトリクス／ダッシュボード／アラートの収集 — それは OpenTelemetry → Datadog/Grafana
+  の仕事（[agtail と OpenTelemetry の違い](./vs-otel) 参照）;
+- リアルタイム監視やテレメトリ配信;
+- マシン間で履歴を継続同期すること — import/export は *証拠のポータビリティ*（持ち運べる出所つきの記録）であって同期ではない（生の同期は `git`/`rsync` で）;
+- skills の第一級化や、transcript に無い内容の追跡。
+
+トークン・ツール・モデルの情報は、セッションを**読むための補助**であって、メトリクス面では
+ありません。新しいエージェントは **in-tree アダプタ**（transcript を agtail の正規化モデルに
+写す小さなパーサ。[アダプタ](./adapters) 参照）として追加し、`--dir <agent>=<path>` は
+既知のエージェントを既定以外のセッションルートに向けるフラグです。
+
 ## 本ドキュメントについて
 
 ドキュメントサイトはアプリとは独立して管理されています(`docs/` 配下に独自の `package.json` を持ちます)。

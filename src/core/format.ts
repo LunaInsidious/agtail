@@ -3,6 +3,7 @@
 
 import type { Event, EventKind } from "./types.js";
 import { obj } from "./utils.js";
+import { selectAdapters } from "./adapters/index.js";
 
 const CONTENT_KINDS = new Set<EventKind>(["text", "tool_use", "thinking"]);
 
@@ -62,6 +63,33 @@ export function summarizeInput(tool: string | undefined, input: unknown): string
         return String(i);
       }
   }
+}
+
+/** Resolve a tool-summary function for one agent, honoring its adapter's optional
+ *  `describeTool` hook (so an adapter can render its own tools) and falling back to
+ *  {@link summarizeInput}. Resolves the adapter once, so the returned closure is
+ *  cheap to call per event. */
+export function toolDescriber(agent: string): (tool: string | undefined, input: unknown) => string {
+  const adapter = selectAdapters([agent]).find((a) => a.agent === agent);
+  const describe = adapter?.describeTool?.bind(adapter);
+  return (tool, input) => describe?.(tool, input) ?? summarizeInput(tool, input);
+}
+
+/** A one-line human caveat for a session's transcript integrity, or "" when the
+ *  read was clean. Keeps the wording in one place; the CLI prints it and the web
+ *  mirrors the same phrasing. */
+export function integrityNote(m: { malformedLines?: number; truncated?: boolean }): string {
+  const bits: string[] = [];
+  if (m.truncated) bits.push("truncated (cut mid-write)");
+  if (m.malformedLines) bits.push(`${m.malformedLines} unreadable line${m.malformedLines === 1 ? "" : "s"} dropped`);
+  return bits.join(", ");
+}
+
+/** Human caveat for a non-normal session ending, or "" when normal/unknown. */
+export function terminationNote(m: { termination?: "interrupted" | "limit" }): string {
+  if (m.termination === "interrupted") return "interrupted — cut off mid-turn";
+  if (m.termination === "limit") return "the final turn hit the output-token limit";
+  return "";
 }
 
 /** Text that should be searched for a tool_use event (input + summary). */

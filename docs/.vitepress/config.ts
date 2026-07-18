@@ -16,6 +16,7 @@ const enSidebar = [
     items: [
       { text: "What is agtail", link: "/guide/getting-started" },
       { text: "Concepts", link: "/guide/concepts" },
+      { text: "agtail vs OpenTelemetry", link: "/guide/vs-otel" },
     ],
   },
   {
@@ -23,7 +24,7 @@ const enSidebar = [
     items: [
       { text: "CLI", link: "/guide/cli" },
       { text: "Web UI", link: "/guide/web-ui" },
-      { text: "Cross-machine sync", link: "/guide/sync" },
+      { text: "Import & export", link: "/guide/sync" },
       { text: "Tokens & cost", link: "/guide/cost" },
     ],
   },
@@ -48,6 +49,7 @@ const jaSidebar = [
     items: [
       { text: "agtail とは", link: "/ja/guide/getting-started" },
       { text: "コンセプト", link: "/ja/guide/concepts" },
+      { text: "OpenTelemetry との違い", link: "/ja/guide/vs-otel" },
     ],
   },
   {
@@ -55,7 +57,7 @@ const jaSidebar = [
     items: [
       { text: "CLI", link: "/ja/guide/cli" },
       { text: "Web UI", link: "/ja/guide/web-ui" },
-      { text: "マシン間同期", link: "/ja/guide/sync" },
+      { text: "インポート / エクスポート", link: "/ja/guide/sync" },
       { text: "トークンとコスト", link: "/ja/guide/cost" },
     ],
   },

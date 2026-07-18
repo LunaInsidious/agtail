@@ -245,6 +245,27 @@ main {
   padding: 0 4px;
   font-size: 11px;
 }
+/* Transcript-integrity caveat: the on-disk record was imperfect (truncated or had
+ * unreadable lines). A red pill so incomplete evidence can't be mistaken for a
+ * clean read; full detail is in the title tooltip. */
+.integmark {
+  font-size: 11px;
+  color: var(--err);
+  border: 1px solid var(--err);
+  border-radius: 4px;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+/* Context-compaction marker (a boundary where the agent condensed its context).
+ * Muted, not alarming — it's normal but forensically important. */
+.compactmark {
+  font-size: 11px;
+  color: var(--think);
+  border: 1px solid var(--think);
+  border-radius: 4px;
+  padding: 0 4px;
+  white-space: nowrap;
+}
 .subof {
   color: var(--think);
 }

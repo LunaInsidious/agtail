@@ -1,12 +1,12 @@
 import { basename, dirname, join, sep } from "node:path";
 import type { Adapter } from "./types.js";
 import type { Event, Session, SessionMeta, Usage } from "../types.js";
-import { iterJsonl } from "../jsonl.js";
+import { collectJsonl } from "../jsonl.js";
 import { hasContent } from "../format.js";
 import { expandHome, mtimeMs, walkFiles } from "../walk.js";
-import { collect, isRecord, obj, str } from "../utils.js";
+import { isRecord, obj, str } from "../utils.js";
 import { collectionDir, collectionOf, listCollections } from "../imported.js";
-import { firstLine } from "./utils.js";
+import { firstLine, tagIntegrity } from "./utils.js";
 
 // OpenAI Codex CLI (v0.14x) stores one rollout JSONL per thread under
 // ~/.codex/sessions/YYYY/MM/DD/rollout-<ts>-<id>.jsonl. A sibling SQLite DB
@@ -55,6 +55,7 @@ interface Parsed {
   title?: string;
   programmatic?: boolean;
   origin?: string;
+  termination?: "interrupted";
 }
 
 // Codex rollout parsing in two pure passes: materialize the JSONL lines into
@@ -184,6 +185,11 @@ function parseCodex(lines: Record<string, unknown>[]): Parsed {
   );
   const calledIds = new Set(rec.filter(isCall).map((r) => str(r.p.call_id) || str(r.p.id)));
 
+  // Codex brackets each turn with task_started … task_complete. A started turn
+  // with no matching completion means the session was cut off mid-turn.
+  const started = rec.filter((r) => isMsg(r, "task_started")).length;
+  const completed = rec.filter((r) => isMsg(r, "task_complete")).length;
+
   return {
     events: toEvents(rec, outputs, calledIds, usageByIndex(rec, models[0])),
     models,
@@ -195,6 +201,7 @@ function parseCodex(lines: Record<string, unknown>[]): Parsed {
     ended: tss.at(-1),
     title: firstUser ? firstLine(str(firstUser.p.message)) : undefined,
     ...(originator && originator !== "codex-tui" ? { programmatic: true, origin: originator } : {}),
+    ...(started > completed ? { termination: "interrupted" as const } : {}),
   };
 }
 
@@ -251,12 +258,19 @@ export function buildCodexSession(lines: Record<string, unknown>[], ctx: CodexPa
     mtime: ctx.mtime,
     events: parsed.events,
     ...(parsed.programmatic ? { programmatic: true, origin: parsed.origin } : {}),
+    ...(parsed.termination ? { termination: parsed.termination } : {}),
   };
 }
 
 async function readSession(path: string): Promise<Session> {
-  const lines = await collect(iterJsonl(path));
-  return buildCodexSession(lines, { id: basename(path).replace(/\.jsonl$/, ""), path, mtime: await mtimeMs(path) });
+  const { lines, malformed, truncated } = await collectJsonl(path);
+  const sess = buildCodexSession(lines, {
+    id: basename(path).replace(/\.jsonl$/, ""),
+    path,
+    mtime: await mtimeMs(path),
+  });
+  tagIntegrity(sess, { malformed, truncated });
+  return sess;
 }
 
 const isRollout = (n: string) => n.startsWith("rollout-") && n.endsWith(".jsonl");

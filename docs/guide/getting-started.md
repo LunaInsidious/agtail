@@ -49,6 +49,26 @@ node dist/cli/index.js serve
 
 See [CLI](./cli) and [Web UI](./web-ui) for details.
 
+## Scope & non-goals
+
+agtail is a **local, zero-setup, read-only forensic viewer**. Cross-agent browsing and
+full-text search are table stakes; its focus is **depth** — beyond messages and tool
+calls it reconstructs a run's *execution mechanics* from the saved transcript: hook
+firings (PreToolUse / PostToolUse / Stop), subagent (Task) nesting, plugin attribution,
+and SDK/programmatic origin — retroactively, with no instrumentation. It is deliberately
+**not** an observability tool. It does not, and will not:
+
+- collect fleet metrics, dashboards, or alerts — use OpenTelemetry → Datadog/Grafana for
+  that (see [agtail vs OpenTelemetry](./vs-otel));
+- run as a real-time monitor or telemetry pipeline;
+- keep histories continuously in sync across machines — import/export is *evidence portability* (portable, provenance-tagged records), not sync (use `git`/`rsync` for raw sync);
+- treat skills as a first-class concept, or chase content that isn't in the transcript.
+
+Token, tool, and model data exist only as **reading aids** for a session, not as a
+metrics surface. New agents are added as **in-tree adapters** (a small parser that
+maps a transcript into agtail's normalized model — see [Adapters](./adapters)); the
+`--dir <agent>=<path>` flag points a known agent at a non-default session root.
+
 ## About these docs
 
 The documentation site is managed independently from the app (it has its own `package.json` under `docs/`).

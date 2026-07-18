@@ -46,7 +46,8 @@
   flex-direction: column;
   background: var(--bg);
   cursor: text;
-  /* Keep the input row clear of the fixed banner / toggle pills at the bottom. */
+  /* Keep the scrolling log (and the prompt at its end) clear of the fixed
+     banner / toggle pills at the bottom. */
   padding-bottom: 44px;
 }
 .termout {
@@ -67,12 +68,12 @@
 .termline.out {
   color: var(--text);
 }
+/* The prompt line lives inside the scrolling log (not a detached footer), so it
+   sits flush under the last output line and aligns with the "$ cmd" echoes. */
 .termrow {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 18px 18px;
-  border-top: 1px solid var(--border);
+  align-items: baseline;
+  gap: 7px;
 }
 .termprompt {
   color: var(--tool);

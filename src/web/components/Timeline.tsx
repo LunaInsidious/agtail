@@ -2,11 +2,38 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import type { Agent, Event, Session } from "../lib/api.js";
 import { tag } from "../lib/filters.js";
-import { originLabel, PROGRAMMATIC_TIP, type Seed } from "../lib/util.js";
+import { integrityLabel, originLabel, PROGRAMMATIC_TIP, type Seed, terminationLabel } from "../lib/util.js";
 import { EventRow, eventText } from "./EventRow.js";
 
 // A glob tool filter (e.g. "mcp__*") can't seed the exact-match in-session filter.
 const seedTools = (s: Seed) => (s.tool && !s.tool.includes("*") ? new Set([s.tool]) : new Set<string>());
+
+// Forensic caveat pills for the session header: an imperfect transcript, a
+// non-normal ending, and context-compaction count. Extracted so the header's own
+// conditionals stay out of Timeline's complexity budget.
+function SessionMarks({ session }: { session: Session }) {
+  const integrity = integrityLabel(session);
+  const termination = terminationLabel(session);
+  return (
+    <>
+      {integrity && (
+        <span className="integmark" title={integrity}>
+          ⚠ {session.truncated ? "truncated" : `${session.malformedLines} bad`}
+        </span>
+      )}
+      {termination && (
+        <span className="integmark" title={termination}>
+          ⚠ {session.termination === "limit" ? "output limit" : "interrupted"}
+        </span>
+      )}
+      {!!session.compactions && (
+        <span className="compactmark" title={`context compacted ${session.compactions}× (detail lost downstream)`}>
+          ⟳ {session.compactions}
+        </span>
+      )}
+    </>
+  );
+}
 
 export const Timeline = memo(function Timeline({
   session,
@@ -171,6 +198,7 @@ export const Timeline = memo(function Timeline({
               </a>
             </span>
           )}
+          <SessionMarks session={session} />
           <code>{session.id.slice(0, 8)}</code>
           <span>{session.cwd}</span>
           <span>{session.gitBranch ?? "-"}</span>

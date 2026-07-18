@@ -1,8 +1,9 @@
 import type { Agent, Filters, ImportMode, Session, SessionHit, SessionMeta } from "../lib/api.js";
-import { findAllSessions, resolveSession } from "../../core/adapters/index.js";
+import { findAllSessions, registeredAgents, resolveSession } from "../../core/adapters/index.js";
 import { matchingSessionRefs, searchSessionHits } from "../../core/search.js";
 import { aggregateUsage, costForModel, usageSum } from "../../core/cost.js";
 import { mask as maskText, maskValue } from "../../core/mask.js";
+import { toolDescriber } from "../../core/format.js";
 import { assertBundle } from "../../core/bundle.js";
 import { buildClaudeSession } from "../../core/adapters/claude-code.js";
 import { buildCodexSession } from "../../core/adapters/codex.js";
@@ -37,7 +38,7 @@ function maskSession(s: Session): Session {
   };
 }
 
-export async function apiFacets(): Promise<{ tools: string[]; cwds: string[]; models: string[] }> {
+export async function apiFacets(): Promise<{ tools: string[]; cwds: string[]; models: string[]; agents: string[] }> {
   const tools = new Set<string>();
   const cwds = new Set<string>();
   const models = new Set<string>();
@@ -46,7 +47,12 @@ export async function apiFacets(): Promise<{ tools: string[]; cwds: string[]; mo
     for (const m of s.models ?? (s.model ? [s.model] : [])) models.add(m);
     for (const e of s.events) if (e.kind === "tool_use" && e.tool) tools.add(e.tool);
   }
-  return { tools: [...tools].sort(), cwds: [...cwds].sort(), models: [...models].sort() };
+  return {
+    tools: [...tools].sort(),
+    cwds: [...cwds].sort(),
+    models: [...models].sort(),
+    agents: registeredAgents().sort(),
+  };
 }
 
 export async function apiSources(): Promise<{ name: string; count: number }[]> {
@@ -83,9 +89,11 @@ export async function apiSession(agent: Agent, id: string, mask: boolean): Promi
   const sess = await resolveSession(id, [agent]);
   if (!sess) throw new Error("session not found");
   const out = mask ? maskSession(sess) : sess;
+  const describe = toolDescriber(out.agent);
   const events = out.events.map((e) => {
     if (e.usage) return { ...e, tokens: usageSum(e.usage), cost: costForModel(e.usage, e.model, resolve) };
     if (e.kind === "hook" && e.command) return { ...e, plugin: plugin.forCommand(e.command) };
+    if (e.kind === "tool_use") return { ...e, toolSummary: describe(e.tool, e.input) };
     return e;
   });
   const firstUser = out.events.find((e) => e.kind === "text" && e.role === "user" && e.text)?.text;

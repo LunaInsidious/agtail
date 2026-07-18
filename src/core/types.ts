@@ -2,15 +2,11 @@
 // maps its own transcript format into these shapes so the rest of agtail —
 // search, CLI, server, web — is agent-agnostic.
 
-export type Agent = "claude-code" | "codex";
-
-export const AGENTS: Agent[] = ["claude-code", "codex"];
-
-/** Type guard for {@link Agent}, so a parsed string list narrows to Agent[]
- *  via `.filter(isAgent)` without a cast. */
-export function isAgent(v: unknown): v is Agent {
-  return v === "claude-code" || v === "codex";
-}
+// An agent id. Open string: the built-in adapters use "claude-code"/"codex", and
+// new agents are added as more in-tree adapters (see core/adapters/register-node.ts).
+// Validation is registry-driven — the set of valid agents is whatever adapters are
+// registered (see adapters/registeredAgents), not a fixed union.
+export type Agent = string;
 
 /** A tri-state filter over a boolean session attribute: include all, only the
  *  ones with it, or exclude them. Default everywhere is "all". */
@@ -80,6 +76,15 @@ export interface Event {
   toolUseId?: string;
   input?: unknown;
   result?: { isError: boolean; text: string };
+  // A one-line presentation summary of `input`, attached at display time by the
+  // API/CLI (via the agent's adapter describeTool, or the core fallback) — NOT
+  // set by normalization. Lets the browser render agent-specific tools it can't summarize.
+  toolSummary?: string;
+
+  // kind === "text": this event is a context-compaction summary — the agent
+  // condensed its own context at this point, so fine detail before it is lost to
+  // everything downstream. (Claude records it as isCompactSummary.)
+  compactBoundary?: boolean;
 
   // kind === "hook": the lifecycle event it fired on (SessionStart, PreToolUse,
   // PostToolUse, Stop, …) — used to group/toggle hooks by type.
@@ -142,6 +147,30 @@ export interface SessionMeta {
   // time by matching the session's prompt to that plugin's review-prompt template
   // (the transcript records no direct link). Local installs only; see plugins.ts.
   spawnedBy?: string;
+
+  // Transcript integrity signals for line-oriented (JSONL) transcripts. Set ONLY
+  // when non-clean, so their absence means "clean" and existing callers/tests are
+  // unaffected. A forensic caveat that the on-disk record is imperfect — surfaced
+  // as a reading aid, not a filter dimension.
+  //   malformedLines — count of non-empty lines that failed to parse and were
+  //                    dropped during read (mid-file corruption).
+  //   truncated      — the final non-empty line failed to parse: a strong signal
+  //                    the file was cut mid-write (an interrupted/killed session).
+  malformedLines?: number;
+  truncated?: boolean;
+
+  // How the session ended, set ONLY when non-normal (absence = normal/unknown,
+  // same positive-signal convention as the integrity fields). A forensic reading
+  // aid — not a filter dimension — derived from what each format actually records:
+  //   "interrupted" — a turn started but never completed: the session was cut
+  //                   mid-turn (Codex: a task_started with no task_complete).
+  //   "limit"       — the final turn hit the model's output-token cap (Claude:
+  //                   stop_reason "max_tokens").
+  termination?: "interrupted" | "limit";
+  // Number of context-compaction boundaries in the session (set only when > 0).
+  // Each marks a point where the agent condensed its context — detail is lost to
+  // everything after it, which often explains later "it forgot X" behaviour.
+  compactions?: number;
 
   // Subagent (sidechain) linkage. A subagent transcript is a child of the
   // session that spawned it via a Task tool call.
