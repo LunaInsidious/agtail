@@ -7,6 +7,7 @@ import { expandHome, mtimeMs, walkFiles } from "../walk.js";
 import { isRecord, obj, str } from "../utils.js";
 import { collectionDir, collectionOf, listCollections } from "../imported.js";
 import { firstLine, tagIntegrity } from "./utils.js";
+import type { SpawnRule } from "../lineage.js";
 
 // OpenAI Codex CLI (v0.14x) stores one rollout JSONL per thread under
 // ~/.codex/sessions/YYYY/MM/DD/rollout-<ts>-<id>.jsonl. A sibling SQLite DB
@@ -275,6 +276,17 @@ async function readSession(path: string): Promise<Session> {
 
 const isRollout = (n: string) => n.startsWith("rollout-") && n.endsWith(".jsonl");
 
+/** A Codex session a hook could have launched: headless `codex exec` (originator
+ *  codex_exec) or the Codex SDKs, which drive it (codex_sdk_ts, …) — never the
+ *  TUI or an IDE. Codex takes ~2s to start, so a detached child's first record
+ *  lands well after its hook exits (observed 1.6–2.2s). Codex itself persists
+ *  no hook runs (HookStarted/Completed are not rollout items), so its sessions
+ *  are only ever children here, never parents. */
+const SPAWN_RULE: SpawnRule = {
+  isCandidate: (m) => m.origin === "codex_exec" || (m.origin?.startsWith("codex_sdk") ?? false),
+  startupSlackMs: 3000,
+};
+
 export function codexAdapter(rootOverride?: string): Adapter {
   const root = expandHome(rootOverride ?? DEFAULT_ROOT);
   // Codex moves finished threads to a sibling archived_sessions/ (same YYYY/MM/DD
@@ -324,5 +336,6 @@ export function codexAdapter(rootOverride?: string): Adapter {
       return [...active, ...archived];
     },
     readSession: read,
+    spawnRule: SPAWN_RULE,
   };
 }

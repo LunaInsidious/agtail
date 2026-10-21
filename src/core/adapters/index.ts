@@ -1,6 +1,7 @@
 import type { Agent, ArchivedFilter, ProgrammaticFilter, Session, SessionMeta } from "../types.js";
 import { matchArchived, matchProgrammatic, matchSource } from "../types.js";
 import type { Adapter, AdapterFactory, RootOverrides } from "./types.js";
+import { linkHookSpawns, withHookSpawnLinks } from "../lineage.js";
 
 export type { Adapter } from "./types.js";
 
@@ -48,16 +49,26 @@ export interface ListFilters {
   source?: string;
 }
 
+/** Every registered agent's sessions, with hook-spawn lineage linked ACROSS
+ *  agents (a Claude Code hook can launch a Codex session). Always scans all
+ *  agents — even when a caller narrows to one — so a session's parent never
+ *  depends on which agents were asked for; callers filter afterwards. */
+export async function listLinkedSessions(overrides: RootOverrides = {}): Promise<SessionMeta[]> {
+  const adapters = buildAdapters(overrides);
+  const lists = await Promise.all(adapters.map((a) => a.findSessions()));
+  const rules = new Map(adapters.map((a) => [a.agent, a.spawnRule]));
+  return linkHookSpawns(lists.flat(), (agent) => rules.get(agent));
+}
+
 export async function findAllSessions(
   agents?: Agent[],
   overrides?: RootOverrides,
   f: ListFilters = {},
 ): Promise<SessionMeta[]> {
-  const adapters = selectAdapters(agents, overrides);
-  const lists = await Promise.all(adapters.map((a) => a.findSessions()));
+  const want = new Set(selectAdapters(agents, overrides).map((a) => a.agent));
   const used = (m: SessionMeta) => m.models ?? (m.model ? [m.model] : []);
-  return lists
-    .flat()
+  return (await listLinkedSessions(overrides))
+    .filter((m) => want.has(m.agent))
     .filter((m) => matchArchived(m, f.archived) && matchProgrammatic(m, f.programmatic))
     .filter((m) => !f.models?.length || f.models.some((x) => used(m).includes(x)))
     .filter((m) => matchSource(m, f.source))
@@ -66,11 +77,12 @@ export async function findAllSessions(
 
 /** Resolve a session by id-prefix (and optional agent) to a full Session. */
 export async function resolveSession(id: string, agents?: Agent[], overrides?: RootOverrides): Promise<Session | null> {
-  const adapters = selectAdapters(agents, overrides);
-  for (const a of adapters) {
-    const metas = await a.findSessions();
+  const all = await listLinkedSessions(overrides);
+  const rules = new Map(buildAdapters(overrides).map((a) => [a.agent, a.spawnRule]));
+  for (const a of selectAdapters(agents, overrides)) {
+    const metas = all.filter((m) => m.agent === a.agent);
     const hit = metas.find((m) => m.id === id) ?? metas.find((m) => m.id.startsWith(id));
-    if (hit) return a.readSession(hit.path);
+    if (hit) return withHookSpawnLinks(await a.readSession(hit.path), hit, all, (agent) => rules.get(agent));
   }
   return null;
 }
