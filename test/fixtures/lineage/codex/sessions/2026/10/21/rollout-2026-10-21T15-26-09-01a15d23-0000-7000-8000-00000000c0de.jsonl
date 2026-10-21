@@ -1,0 +1,4 @@
+{"timestamp": "2026-10-21T06:26:09.700Z", "type": "session_meta", "payload": {"id": "01a15d23-0000-7000-8000-00000000c0de", "session_id": "01a15d23-0000-7000-8000-00000000c0de", "timestamp": "2026-10-21T06:26:09.700Z", "cwd": "/work/proj", "originator": "codex-tui", "cli_version": "0.142.0", "source": "cli"}}
+{"timestamp": "2026-10-21T06:26:09.700Z", "type": "event_msg", "payload": {"type": "task_started", "turn_id": "t1"}}
+{"timestamp": "2026-10-21T06:26:09.700Z", "type": "event_msg", "payload": {"type": "user_message", "message": "typed by hand", "images": []}}
+{"timestamp": "2026-10-21T06:26:30.000Z", "type": "event_msg", "payload": {"type": "task_complete", "turn_id": "t1", "last_agent_message": null}}

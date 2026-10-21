@@ -37,6 +37,9 @@ export interface Event {
   // Hook command + the plugin it belongs to (resolved by the server, local only).
   command?: string;
   plugin?: string;
+  // Sessions this event launched (subagent spawn / hook-started session).
+  // `inferred`: reconstructed from timing, not recorded by the agent.
+  spawnedSessions?: { id: string; agent: Agent; inferred?: boolean }[];
   model?: string;
   usage?: Partial<Usage>;
   raw?: unknown;
@@ -77,6 +80,10 @@ export interface SessionMeta {
   parentId?: string;
   agentName?: string;
   spawnedByToolUseId?: string;
+  // parentId was inferred (hook-launched session), not recorded by the agent.
+  parentInferred?: boolean;
+  // The parent's agent when inferred (a hook can launch another agent's session).
+  parentAgent?: Agent;
 }
 
 export interface Session extends SessionMeta {
@@ -101,6 +108,7 @@ export interface SessionHit {
   spawnedBy?: string;
   isSubagent?: boolean;
   parentId?: string;
+  parentInferred?: boolean;
   agentName?: string;
   matchCount: number;
   snippet: string;

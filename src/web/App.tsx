@@ -50,7 +50,7 @@ export function App() {
     filters.programmatic !== "all";
 
   // Opening a session (cur/seed/loading) with an LRU + stale-while-revalidate cache.
-  const { cur, setCur, seed, loading, open, openParent, scrollTargetRef } = useOpenSession(
+  const { cur, setCur, seed, loading, open, openLinked, scrollTargetRef } = useOpenSession(
     filters.mask,
     hits,
     setFilters,
@@ -435,7 +435,7 @@ export function App() {
               or search across all sessions from the bar above ↑
             </div>
           )}
-          {!loading && cur && <Timeline session={cur} seed={seed} onOpenParent={openParent} />}
+          {!loading && cur && <Timeline session={cur} seed={seed} onOpenLinked={openLinked} />}
         </section>
       </main>
       {manageSaved && (

@@ -23,7 +23,7 @@ agtail grep deploy --agent codex --since 2026-06-01 --until 2026-06-24 --json
 
 ## list
 
-セッションを新しい順に一覧表示します。ソースでタグ付けされ(claude / codex)、サブエージェントは親の下にネストされます。
+セッションを新しい順に一覧表示します。ソースでタグ付けされ(claude / codex)、サブエージェントは親の下に(`↳`)、hook が起動した SDK セッションはその hook を実行したセッションの下に(`⇢`、推定 — [アダプタ](./adapters#hook-が起動したセッション-推定の親子関係)を参照)、何段でもネストされます。
 
 ```sh
 agtail list
@@ -41,7 +41,7 @@ agtail show <id>            # id はプレフィックスでも可
 agtail show <id> --tools    # ツール呼び出しのみ
 ```
 
-各アシスタントターンには、`[42,548 tok ≈$0.5851]` のようにトークン / コストが注記されます([トークンとコスト](./cost)を参照)。サブエージェントのセッションには `↳ subagent (Explore) of <parentId>` というヘッダーが表示されます。
+各アシスタントターンには、`[42,548 tok ≈$0.5851]` のようにトークン / コストが注記されます([トークンとコスト](./cost)を参照)。サブエージェントのセッションには `↳ subagent (Explore) of <parentId>` というヘッダーが、hook が起動したセッションには `⇢ likely spawned by a hook in <parentId> (inferred from timing)` が表示されます。セッションを起動した行(Codex の `spawn_agent` 呼び出し、または hook)の後には `↳ spawned <id>`(hook の場合は `likely spawned (inferred)`)が続きます。
 
 ## stats
 

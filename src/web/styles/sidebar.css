@@ -237,6 +237,7 @@ main {
 }
 .branch {
   color: var(--think);
+  white-space: nowrap;
 }
 .agentname {
   color: var(--think);

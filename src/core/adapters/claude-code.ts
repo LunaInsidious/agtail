@@ -1,13 +1,14 @@
 import { basename, dirname } from "node:path";
 import { readFileSync, existsSync } from "node:fs";
 import type { Adapter } from "./types.js";
-import type { Event, Session, SessionMeta, Usage } from "../types.js";
+import type { Event, Session, Usage } from "../types.js";
 import { collectJsonl } from "../jsonl.js";
 import { hasContent } from "../format.js";
 import { expandHome, mtimeMs, walkFiles } from "../walk.js";
 import { isRecord, obj, str } from "../utils.js";
 import { collectionDir, collectionOf, listCollections } from "../imported.js";
 import { firstLine, tagIntegrity } from "./utils.js";
+import { hookWindows, type ScannedMeta, type SpawnRule } from "../lineage.js";
 
 // Claude Code stores one JSONL transcript per session under
 // ~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl (plus subagents/).
@@ -110,6 +111,7 @@ function attachmentEvent(line: Record<string, unknown>, ts: string | undefined, 
       // The full command, kept so the display layer can resolve which plugin it
       // belongs to (core/plugins.ts).
       command: str(att.command) || undefined,
+      ...hookRunOf(line, ts, att.durationMs),
       text: hookText(atype, { label: scripts || matcher, ms, att }),
       sidechain,
       raw: line,
@@ -117,6 +119,24 @@ function attachmentEvent(line: Record<string, unknown>, ts: string | undefined, 
   }
   return { kind: "unknown", ts, text: atype ? `attachment · ${atype}` : "attachment", sidechain, raw: line };
 }
+
+/** A hook attachment's run window: its timestamp is the hook's END, durationMs
+ *  its length, and the record's cwd where it ran. Omitted unless all three are
+ *  recorded. */
+function hookRunOf(line: Record<string, unknown>, ts: string | undefined, durationMs: unknown): Pick<Event, "hookRun"> {
+  const end = ts ? Date.parse(ts) : Number.NaN;
+  const cwd = str(line.cwd);
+  if (Number.isNaN(end) || typeof durationMs !== "number" || !cwd) return {};
+  return { hookRun: { start: new Date(end - durationMs).toISOString(), end: new Date(end).toISOString(), cwd } };
+}
+
+/** A Claude Code session a hook could have launched: one driven through the
+ *  Agent SDK or `claude -p` (entrypoint sdk-ts / sdk-py / sdk-cli). A detached
+ *  child's first record lands within ~1s of its hook exiting (observed ≤ 972ms). */
+const SPAWN_RULE: SpawnRule = {
+  isCandidate: (m) => m.programmatic === true && (m.origin?.startsWith("sdk") ?? false),
+  startupSlackMs: 1000,
+};
 
 /** The display line for a hook attachment, keyed by its subtype. `label` is the
  *  hook's script (preferred) or its matcher. */
@@ -489,30 +509,32 @@ export function claudeCodeAdapter(rootOverride?: string): Adapter {
     return sess;
   };
 
-  const scan = async (dir: string): Promise<SessionMeta[]> => {
+  // Each listed session keeps its hook run windows (not its events) so the
+  // listing can infer which session's hook launched a headless session.
+  const scan = async (dir: string): Promise<ScannedMeta[]> => {
     const paths = await walkFiles(dir, isJsonl);
-    const metas = await Promise.all(
+    const entries = await Promise.all(
       paths.map(async (p) => {
         const sess = await read(p);
         if (!hasContent(sess.events)) return null; // skip empty stub sessions
         const { events, ...meta } = sess;
-        void events;
-        return meta;
+        return { ...meta, hookWindows: hookWindows(events) };
       }),
     );
-    return metas.filter((m): m is SessionMeta => m !== null);
+    return entries.filter((e) => e !== null);
   };
 
   return {
     agent: AGENT,
     base: dirname(root),
     roots: () => [root],
-    async findSessions(): Promise<SessionMeta[]> {
+    async findSessions(): Promise<ScannedMeta[]> {
       const imported = listCollections().map((c) => scan(collectionDir(c, AGENT)));
       const lists = await Promise.all([scan(root), ...imported]);
       return lists.flat();
     },
     transferFiles: () => walkFiles(root, isTransfer),
     readSession: read,
+    spawnRule: SPAWN_RULE,
   };
 }

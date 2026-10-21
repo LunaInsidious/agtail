@@ -10,7 +10,7 @@ import type {
 } from "./types.js";
 import { matchArchived, matchProgrammatic, matchSource } from "./types.js";
 import type { Adapter, RootOverrides } from "./adapters/types.js";
-import { selectAdapters } from "./adapters/index.js";
+import { listLinkedSessions, selectAdapters } from "./adapters/index.js";
 import { toolSearchText } from "./format.js";
 import { mask } from "./mask.js";
 import { collect } from "./utils.js";
@@ -164,8 +164,9 @@ export async function* searchSessions(f: SearchFilters): AsyncGenerator<Match> {
   const ctx = buildCtx(f);
   const counter = { matches: 0 };
 
+  const linked = await listLinkedSessions(f.overrides);
   for (const adapter of selectAdapters(f.agents, f.overrides)) {
-    const metas = (await adapter.findSessions()).sort((a, b) => b.mtime - a.mtime);
+    const metas = linked.filter((m) => m.agent === adapter.agent).sort((a, b) => b.mtime - a.mtime);
     for (const meta of metas) {
       if (!matchArchived(meta, f.archived) || !matchProgrammatic(meta, f.programmatic)) continue;
       if (!matchModels(meta, f.models)) continue;
@@ -213,8 +214,9 @@ export async function searchSessionHits(f: SearchFilters): Promise<SessionHit[]>
   const ctx = buildCtx(f);
   const out: SessionHit[] = [];
 
+  const linked = await listLinkedSessions(f.overrides);
   for (const adapter of selectAdapters(f.agents, f.overrides)) {
-    const metas = (await adapter.findSessions()).sort((a, b) => b.mtime - a.mtime);
+    const metas = linked.filter((m) => m.agent === adapter.agent).sort((a, b) => b.mtime - a.mtime);
     for (const meta of metas) {
       if (!matchArchived(meta, f.archived) || !matchProgrammatic(meta, f.programmatic)) continue;
       if (!matchModels(meta, f.models)) continue;
@@ -246,6 +248,7 @@ export async function searchSessionHits(f: SearchFilters): Promise<SessionHit[]>
         origin: meta.origin,
         isSubagent: meta.isSubagent,
         parentId: meta.parentId,
+        parentInferred: meta.parentInferred,
         agentName: meta.agentName,
         matchCount,
         snippet: firstSnippet,

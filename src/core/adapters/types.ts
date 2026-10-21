@@ -1,4 +1,5 @@
-import type { Agent, Session, SessionMeta } from "../types.js";
+import type { Agent, Session } from "../types.js";
+import type { ScannedMeta, SpawnRule } from "../lineage.js";
 
 /**
  * One adapter per coding agent. It knows where that agent stores transcripts
@@ -11,8 +12,10 @@ export interface Adapter {
   base: string;
   /** Existing root directories to scan (already filtered for existence). */
   roots(): string[];
-  /** Lightweight scan of all sessions for listings/search indexing. */
-  findSessions(): Promise<SessionMeta[]>;
+  /** Lightweight scan of all sessions for listings/search indexing. An agent
+   *  that records hook runs attaches each session's `hookWindows` (consumed by
+   *  the cross-agent lineage linker in adapters/index.ts, then dropped). */
+  findSessions(): Promise<ScannedMeta[]>;
   /** Fully read + normalize one session file. */
   readSession(path: string): Promise<Session>;
   /** Absolute paths of all native transcript files to export (NOT the import
@@ -22,6 +25,10 @@ export interface Adapter {
    *  tools. Return undefined to defer to the core summarizer (core/format.ts
    *  summarizeInput). Lets an adapter present exotic tools instead of raw JSON. */
   describeTool?(tool: string | undefined, input: unknown): string | undefined;
+  /** Optional: which of this agent's sessions a hook (of any agent) could have
+   *  launched, and how long it takes to start (core/lineage.ts). Absent = its
+   *  sessions are never inferred children. */
+  spawnRule?: SpawnRule;
 }
 
 /** Per-agent root overrides (from --dir / --claude-dir / --codex-dir), keyed by agent. */

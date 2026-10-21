@@ -1,0 +1,4 @@
+{"timestamp": "2026-10-21T06:26:09.674Z", "type": "session_meta", "payload": {"id": "01a15d23-7e61-7af1-b851-632ba7f584d4", "session_id": "01a15d23-7e61-7af1-b851-632ba7f584d4", "timestamp": "2026-10-21T06:26:09.674Z", "cwd": "/work/proj", "originator": "codex_exec", "cli_version": "0.142.0", "source": "exec"}}
+{"timestamp": "2026-10-21T06:26:09.674Z", "type": "event_msg", "payload": {"type": "task_started", "turn_id": "t1"}}
+{"timestamp": "2026-10-21T06:26:09.674Z", "type": "event_msg", "payload": {"type": "user_message", "message": "Reply with exactly: echo-ok", "images": []}}
+{"timestamp": "2026-10-21T06:26:11.763Z", "type": "event_msg", "payload": {"type": "task_complete", "turn_id": "t1", "last_agent_message": null}}

@@ -63,6 +63,21 @@ export function isEventKind(v: unknown): v is EventKind {
   return typeof v === "string" && EVENT_KINDS.has(v);
 }
 
+/** A child session launched from an event — possibly in another agent (a
+ *  Claude Code hook running `codex exec`). */
+interface SpawnedSession {
+  id: string;
+  agent: Agent;
+  inferred?: boolean;
+}
+
+/** When and where a hook ran. */
+interface HookRun {
+  start: string;
+  end: string;
+  cwd: string;
+}
+
 /** One normalized timeline event. tool_result is merged into its tool_use. */
 export interface Event {
   kind: EventKind;
@@ -95,6 +110,16 @@ export interface Event {
   // present for sessions whose plugins are installed on this machine.
   command?: string;
   plugin?: string;
+  // A hook firing's run window (ISO start/end) and the directory it ran in,
+  // when the agent records them. Adapter-normalized so core never reads raw
+  // records; hook-spawn lineage is inferred from it (see core/lineage.ts).
+  hookRun?: HookRun;
+
+  // Sessions this event launched (a subagent spawn call, or a hook that started
+  // a headless session). Lets the timeline link parent -> child at the exact
+  // point of spawn. `inferred` marks a link reconstructed from timing rather
+  // than recorded by the agent (see core/lineage.ts).
+  spawnedSessions?: SpawnedSession[];
 
   // assistant accounting (used by cost aggregation)
   model?: string;
@@ -178,6 +203,13 @@ export interface SessionMeta {
   parentId?: string; // id of the spawning (parent) session
   agentName?: string; // e.g. "Explore", "general-purpose"
   spawnedByToolUseId?: string; // the parent's Task tool_use id
+  // True when `parentId` was inferred rather than recorded: a hook-launched SDK
+  // session linked to the session whose hook was running when it started (see
+  // core/lineage.ts). Set only alongside parentId; absent = recorded (subagent).
+  parentInferred?: boolean;
+  // The parent's agent, set alongside an inferred parentId: a hook in one agent
+  // can launch another agent's session. A recorded parent is always same-agent.
+  parentAgent?: Agent;
 }
 
 /** A fully-read session with its normalized events. */
@@ -219,6 +251,7 @@ export interface SessionHit {
   // matched parent (and show an unmatched-parent child standalone).
   isSubagent?: boolean;
   parentId?: string;
+  parentInferred?: boolean;
   agentName?: string;
   matchCount: number;
   snippet: string; // first matching event's snippet

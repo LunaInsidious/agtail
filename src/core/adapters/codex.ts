@@ -7,6 +7,7 @@ import { expandHome, mtimeMs, walkFiles } from "../walk.js";
 import { isRecord, obj, str } from "../utils.js";
 import { collectionDir, collectionOf, listCollections } from "../imported.js";
 import { firstLine, tagIntegrity } from "./utils.js";
+import type { SpawnRule } from "../lineage.js";
 
 // OpenAI Codex CLI (v0.14x) stores one rollout JSONL per thread under
 // ~/.codex/sessions/YYYY/MM/DD/rollout-<ts>-<id>.jsonl. A sibling SQLite DB
@@ -56,6 +57,8 @@ interface Parsed {
   programmatic?: boolean;
   origin?: string;
   termination?: "interrupted";
+  // Present iff this rollout is a subagent thread (spawned via spawn_agent).
+  subagent?: { parentId: string; agentName?: string };
 }
 
 // Codex rollout parsing in two pure passes: materialize the JSONL lines into
@@ -102,6 +105,7 @@ function toEvents(
         const rawName = str(p.name) || sub;
         const tool = rawName === "exec_command" || rawName === "shell" || sub === "local_shell_call" ? "exec" : rawName;
         const result = outputs.get(str(p.call_id) || str(p.id));
+        const child = rawName === "spawn_agent" && result && !result.isError ? spawnedAgentId(result.text) : undefined;
         return [
           {
             kind: "tool_use",
@@ -110,6 +114,7 @@ function toEvents(
             tool,
             input: normalizeToolInput(args),
             ...(result ? { result } : {}),
+            ...(child ? { spawnedSessions: [{ id: child, agent: "codex" }] } : {}),
           },
         ];
       }
@@ -144,6 +149,22 @@ function toEvents(
           : [{ kind: "unknown", ts, text: sub, raw: r.raw }];
     }
   });
+}
+
+/** The thread id a spawn_agent call returned ({"agent_id": …, "nickname": …}). */
+function spawnedAgentId(output: string): string | undefined {
+  const v = parseArgs(output);
+  return (v && str(v.agent_id)) || undefined;
+}
+
+/** Subagent linkage from session_meta. Codex sets the top-level parent_thread_id
+ *  only for threads spawned in-process by another thread (spawn_agent, agent
+ *  jobs); a separately launched `codex exec` never carries one. The role is
+ *  top-level too (agent_role, formerly agent_type). */
+function subagentOf(meta: Record<string, unknown>): Parsed["subagent"] {
+  const parentId = str(meta.parent_thread_id);
+  if (!parentId) return undefined;
+  return { parentId, agentName: str(meta.agent_role) || undefined };
 }
 
 function parseCodex(lines: Record<string, unknown>[]): Parsed {
@@ -202,6 +223,7 @@ function parseCodex(lines: Record<string, unknown>[]): Parsed {
     title: firstUser ? firstLine(str(firstUser.p.message)) : undefined,
     ...(originator && originator !== "codex-tui" ? { programmatic: true, origin: originator } : {}),
     ...(started > completed ? { termination: "interrupted" as const } : {}),
+    subagent: subagentOf(meta),
   };
 }
 
@@ -259,6 +281,9 @@ export function buildCodexSession(lines: Record<string, unknown>[], ctx: CodexPa
     events: parsed.events,
     ...(parsed.programmatic ? { programmatic: true, origin: parsed.origin } : {}),
     ...(parsed.termination ? { termination: parsed.termination } : {}),
+    ...(parsed.subagent
+      ? { isSubagent: true, parentId: parsed.subagent.parentId, agentName: parsed.subagent.agentName }
+      : {}),
   };
 }
 
@@ -274,6 +299,17 @@ async function readSession(path: string): Promise<Session> {
 }
 
 const isRollout = (n: string) => n.startsWith("rollout-") && n.endsWith(".jsonl");
+
+/** A Codex session a hook could have launched: headless `codex exec` (originator
+ *  codex_exec) or the Codex SDKs, which drive it (codex_sdk_ts, …) — never the
+ *  TUI or an IDE. Codex takes ~2s to start, so a detached child's first record
+ *  lands well after its hook exits (observed 1.6–2.2s). Codex itself persists
+ *  no hook runs (HookStarted/Completed are not rollout items), so its sessions
+ *  are only ever children here, never parents. */
+const SPAWN_RULE: SpawnRule = {
+  isCandidate: (m) => m.origin === "codex_exec" || (m.origin?.startsWith("codex_sdk") ?? false),
+  startupSlackMs: 3000,
+};
 
 export function codexAdapter(rootOverride?: string): Adapter {
   const root = expandHome(rootOverride ?? DEFAULT_ROOT);
@@ -324,5 +360,6 @@ export function codexAdapter(rootOverride?: string): Adapter {
       return [...active, ...archived];
     },
     readSession: read,
+    spawnRule: SPAWN_RULE,
   };
 }

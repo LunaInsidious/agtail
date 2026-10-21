@@ -106,6 +106,14 @@ describe("claude-code adapter", () => {
     // the hook script (the in-transcript plugin hint).
     const post = hooks.find((h) => h.hookEvent === "PostToolUse" && h.text?.includes("sg-python.sh"));
     expect(post?.tool).toBe("Write");
+    // Its run window is normalized from the record: timestamp = the hook's end,
+    // durationMs its length, the record's own cwd where it ran.
+    expect(post?.hookRun).toEqual({
+      start: "2026-06-25T12:00:05.988Z",
+      end: "2026-06-25T12:00:06.000Z",
+      cwd: "/Users/testuser/proj-wt",
+    });
+    expect(stop?.hookRun).toBeUndefined();
     // hook_additional_context surfaces the injected text (not a bare "+context").
     const ctx = hooks.find((h) => h.text?.includes("+context"));
     expect(ctx?.tool).toBe("Edit");

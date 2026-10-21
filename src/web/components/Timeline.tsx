@@ -2,7 +2,14 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import type { Agent, Event, Session } from "../lib/api.js";
 import { tag } from "../lib/filters.js";
-import { integrityLabel, originLabel, PROGRAMMATIC_TIP, type Seed, terminationLabel } from "../lib/util.js";
+import {
+  INFERRED_PARENT_TIP,
+  integrityLabel,
+  originLabel,
+  PROGRAMMATIC_TIP,
+  type Seed,
+  terminationLabel,
+} from "../lib/util.js";
 import { EventRow, eventText } from "./EventRow.js";
 
 // A glob tool filter (e.g. "mcp__*") can't seed the exact-match in-session filter.
@@ -38,11 +45,11 @@ function SessionMarks({ session }: { session: Session }) {
 export const Timeline = memo(function Timeline({
   session,
   seed,
-  onOpenParent,
+  onOpenLinked,
 }: {
   session: Session;
   seed: Seed;
-  onOpenParent: (a: Agent, id: string) => void;
+  onOpenLinked: (a: Agent, id: string) => void;
 }) {
   const [toolFilter, setToolFilter] = useState<Set<string>>(() => seedTools(seed));
   const [showThinking, setShowThinking] = useState(true);
@@ -193,9 +200,23 @@ export const Timeline = memo(function Timeline({
           {session.isSubagent && (
             <span className="subof">
               ↳ subagent{session.agentName ? ` (${session.agentName})` : ""} of{" "}
-              <a onClick={() => session.parentId && onOpenParent(session.agent, session.parentId)}>
+              <a onClick={() => session.parentId && onOpenLinked(session.agent, session.parentId)}>
                 {session.parentId?.slice(0, 8)}
               </a>
+            </span>
+          )}
+          {session.parentInferred && session.parentAgent && (
+            <span className="subof" title={INFERRED_PARENT_TIP}>
+              ⇢ likely spawned by a hook in{" "}
+              <a
+                onClick={() =>
+                  session.parentId && session.parentAgent && onOpenLinked(session.parentAgent, session.parentId)
+                }
+              >
+                {session.parentAgent !== session.agent && `${tag(session.parentAgent)} `}
+                {session.parentId?.slice(0, 8)}
+              </a>{" "}
+              (inferred)
             </span>
           )}
           <SessionMarks session={session} />
@@ -314,7 +335,7 @@ export const Timeline = memo(function Timeline({
           return (
             <div className={"evrow" + (index === activePos ? " active" : "")}>
               {/* Highlight only matching rows so non-matching rows skip re-render. */}
-              {ev && <EventRow e={ev} highlight={matchesAt(oi) ? needle : undefined} />}
+              {ev && <EventRow e={ev} highlight={matchesAt(oi) ? needle : undefined} onOpenSession={onOpenLinked} />}
             </div>
           );
         }}

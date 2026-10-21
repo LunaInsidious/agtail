@@ -25,6 +25,11 @@ export function originLabel(origin?: string): string {
   return origin; // e.g. a Codex originator name
 }
 
+// A hook-launched session's parent is inferred, never recorded (see core/lineage.ts).
+export const INFERRED_PARENT_TIP =
+  "launched by a hook in the parent session — inferred from timing (it started while that hook ran, in the same cwd); the agent records no direct link";
+export const INFERRED_CHILD_TIP =
+  "inferred: this session started while the hook ran, in the same cwd — the agent records no direct link";
 export const PROGRAMMATIC_TIP =
   "Programmatic session — launched by tooling (the Agent SDK, a hook, plugin, script, or the desktop app), not typed interactively by a person.";
 

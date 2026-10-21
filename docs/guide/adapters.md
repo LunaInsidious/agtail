@@ -30,6 +30,14 @@ A session records *how* it was launched — Claude's `entrypoint` (`cli`, `sdk-p
 
 A plugin can spawn a headless review via the Agent SDK, but the child session records no link back to the plugin. agtail infers it: the plugin builds the review prompt from a literal template in its own source, and the spawned session's prompt starts with that verbatim string, so the first line is matched against the SDK-calling plugins' sources. This is deliberately first-line-exact (an audit of real sessions showed looser matching misattributes plugins whose prompts share interior phrasing), and like hook attribution it only resolves locally-installed plugins.
 
+### Hook-spawned sessions (inferred lineage)
+
+The same child session also records no link to the *session* whose hook launched it. Neither Claude Code nor the Agent SDK persists a parent id for a headless child (the SDK passes the parent's `CLAUDE_CODE_SESSION_ID` through the environment, but nothing writes it to the transcript), and neither Claude Code nor Codex has a setting that turns one on. So agtail reconstructs it from what the parent *does* record: each hook firing's end time, `durationMs`, and cwd give its run window. A headless session that started inside exactly one session's hook window, in that cwd, is nested under that session and linked from the hook row — **across agents**: a Claude Code hook that runs `codex exec` links the Codex session to the Claude session. A hook may detach its child and exit first, so each agent allows its own startup slack after the hook ends (Claude Code 1s, observed ≤ 0.97s; Codex 3s, observed 1.6–2.2s). If two sessions' windows both fit, it stays unlinked rather than guessing. These links are always marked **inferred** (`⇢`, "likely spawned") so they can't be mistaken for a recorded parent (`↳`).
+
+Which sessions count as hook-launchable is per agent: Claude Code's Agent SDK / `claude -p` sessions (`entrypoint` `sdk-*`), and Codex's `codex exec` / Codex SDK sessions (originator `codex_exec` / `codex_sdk_*`) — never an interactive TUI or IDE session. An adapter opts in on either side: as a parent by setting each hook event's normalized `hookRun` (`start`/`end`/`cwd`), as a child by declaring a `spawnRule` (candidate predicate + startup slack). Codex can only be a child: it emits hook runs live but does not persist them to its rollouts, so it has no windows to match against.
+
+Known blind spots, confirmed by live runs: Claude Code does not record a hook that succeeds **silently** (no output) — only one that prints or fails, plus Stop hooks in their summary — so a child launched by a silent hook has no window of its own, and may instead be linked to the same session through a neighbouring hook (right session, but not the launching row). A hook that `cd`s before launching leaves the child in a different cwd, so it is not linked. And a headless session started **by hand** in the same cwd while another session's hook is running is indistinguishable from that hook's child: with always-on plugin hooks, hook windows plus slack cover roughly a fifth of an interactive session's time. That is why these links are always shown as inferred.
+
 ## Claude Code
 
 - **Location:** `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl`
@@ -42,6 +50,7 @@ A plugin can spawn a headless review via the Agent SDK, but the child session re
 - **Location:** `~/.codex/sessions/YYYY/MM/DD/rollout-<ts>-<id>.jsonl`
 - Recent Codex (v0.14x) indexes rollouts in a SQLite DB, but the files are glob-discoverable, so agtail reads them directly.
 - Each line is `{ timestamp, type, payload }`. agtail's canonical timeline is the **`event_msg`** stream (clean user / assistant / reasoning / tool activity). The parallel `response_item` stream is the raw Responses-API mirror — it repeats messages and carries large system prompts — so it is intentionally not re-projected. Streaming `*_delta` events are skipped; any other subtype is surfaced as `unknown`.
+- **Subagents** (threads started by `spawn_agent`) are separate rollouts whose `session_meta` carries the spawning thread's `parent_thread_id` and the `agent_role`; agtail nests them under the parent and links the parent's `spawn_agent` call (whose output returns the child's `agent_id`) to the child. A separately launched `codex exec` records no parent.
 
 ## Empty sessions
 
