@@ -93,3 +93,60 @@ describe("codex termination", () => {
     expect(sess.termination).toBeUndefined();
   });
 });
+
+describe("codex subagent linkage", () => {
+  const ctx = { id: "s", path: "p", mtime: 0 };
+  const item = (payload: Record<string, unknown>) => ({
+    timestamp: "2026-07-02T10:00:00Z",
+    type: "response_item",
+    payload,
+  });
+
+  it("links a spawned thread to its parent via session_meta.parent_thread_id", () => {
+    const sess = buildCodexSession(
+      [
+        {
+          type: "session_meta",
+          payload: {
+            id: "child-id",
+            session_id: "parent-id",
+            parent_thread_id: "parent-id",
+            agent_role: "explorer",
+            originator: "codex-tui",
+            source: { subagent: { thread_spawn: { parent_thread_id: "parent-id", depth: 1, agent_role: "explorer" } } },
+          },
+        },
+        msg("user_message", { message: "read hoge.txt" }),
+      ],
+      ctx,
+    );
+    expect(sess.id).toBe("child-id");
+    expect(sess.isSubagent).toBe(true);
+    expect(sess.parentId).toBe("parent-id");
+    expect(sess.agentName).toBe("explorer");
+  });
+
+  it("leaves a top-level thread unlinked", () => {
+    const sess = buildCodexSession(
+      [{ type: "session_meta", payload: { id: "x", source: "cli" } }, msg("user_message", { message: "hi" })],
+      ctx,
+    );
+    expect(sess.isSubagent).toBeUndefined();
+    expect(sess.parentId).toBeUndefined();
+  });
+
+  it("marks the parent's spawn_agent call with the child thread it returned", () => {
+    const sess = buildCodexSession(
+      [
+        item({ type: "function_call", name: "spawn_agent", arguments: '{"agent_type":"explorer"}', call_id: "c1" }),
+        item({ type: "function_call_output", call_id: "c1", output: '{"agent_id":"child-id","nickname":"Feynman"}' }),
+        item({ type: "function_call", name: "exec_command", arguments: '{"cmd":"ls"}', call_id: "c2" }),
+        item({ type: "function_call_output", call_id: "c2", output: "ok" }),
+      ],
+      ctx,
+    );
+    const [spawn, exec] = sess.events;
+    expect(spawn?.spawnedSessions).toEqual([{ id: "child-id", agent: "codex" }]);
+    expect(exec?.spawnedSessions).toBeUndefined();
+  });
+});
