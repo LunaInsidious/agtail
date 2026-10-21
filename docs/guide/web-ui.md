@@ -49,7 +49,7 @@ One list, newest first. It shows **sessions** by default and switches to **searc
 Each row carries its provenance at a glance:
 
 - A **source tag** (claude / codex).
-- **Subagent** sessions are **nested under their parent**, badged with the agent type (e.g. `Explore`).
+- **Subagent** sessions are **nested under their parent** (`↳`), badged with the agent type (e.g. `Explore`). Sessions a **hook launched** nest under the session whose hook ran (`⇢`) — an inferred link, see [Adapters](./adapters#hook-spawned-sessions-inferred-lineage). Nesting goes to any depth (a subagent's hook can launch a session too).
 - Marks for 🗄 archived, imported (from a collection), and 🤖 **programmatic** sessions; an SDK-spawned session also shows a **🧩 plugin** chip naming the plugin that launched it (when that plugin is installed locally).
 
 The list header shows the count and an **Export** action — *Export all*, or *Export results* when a search/filter is active (the filtered export re-runs your filter server-side). The divider between the panes is **draggable** to resize the sidebar; the width is remembered across reloads.
@@ -76,6 +76,7 @@ Hook firings are first-class events in the timeline, not noise:
 - A **🧩 plugin** chip names the plugin the hook belongs to, matched against your locally-installed plugins.
 - `hook_additional_context` hooks surface the **text they injected** (`+context · …`), not just a bare marker.
 - A `Stop` summary lists the hook scripts that ran and the total duration.
+- A hook that launched a session links to it (`↳ likely spawned <id>`, dashed = inferred); the child's header links back (`⇢ likely spawned by a hook in <id> (inferred)`). A Codex `spawn_agent` call links to its subagent the same way (`↳ spawned <id>`, recorded).
 
 The in-session search header has toggles to fold hooks, tool calls, thinking, and system messages in or out, with per-event-type counts.
 

@@ -121,43 +121,42 @@ async function cmdList(opts: ListOpts, global: GlobalOpts) {
     (!opts.until || (m.started ?? "") <= opts.until);
 
   const sessions = all.filter(pass);
-  // Group subagents under their parent so the tree is visible.
+  // Nest children (subagents, hook-launched sessions) under their parent so the
+  // tree is visible — to any depth (a subagent's hook can launch a session too).
   const children = new Map<string, typeof sessions>();
   for (const m of sessions) {
-    if (m.isSubagent && m.parentId) {
+    if (m.parentId) {
       const bucket = children.get(m.parentId) ?? [];
       bucket.push(m);
       children.set(m.parentId, bucket);
     }
   }
-  const seenChild = new Set<string>();
+  const present = new Set(sessions.map((m) => m.id));
 
-  const row = (m: (typeof sessions)[number], indent: boolean) => {
-    const lead = indent ? color("  ↳ ", "violet") : "";
-    const tag = color(agentTag(m.agent).padEnd(indent ? 4 : 6), "violet");
+  const row = (m: (typeof sessions)[number], depth: number) => {
+    const pad = "  ".repeat(Math.max(0, depth - 1));
+    const lead = depth ? pad + color(m.parentInferred ? "  ⇢ " : "  ↳ ", "violet") : "";
+    const tag = color(agentTag(m.agent).padEnd(depth ? 4 : 6), "violet");
     const sid = color(m.id.slice(0, 8), "amber");
     const when = color(shortTs(m.ended), "gray");
     const name = m.isSubagent && m.agentName ? color(`[${m.agentName}] `, "violet") : "";
+    const hooked = m.parentInferred ? color("🪝 hook-spawned (inferred) ", "dim") : "";
     const arch =
       (m.archived ? color("🗄 archived ", "dim") : "") +
       (m.programmatic ? color(`🤖 ${m.origin ?? "programmatic"} `, "dim") : "");
     console.log(
       `${lead}${tag} ${sid}  ${when}  ${color(String(m.messages).padStart(4), "dim")} ev  ${color(tilde(m.cwd), "cyan")}`,
     );
-    console.log(`${indent ? "      " : ""}         ${arch}${name}${global.mask ? maskText(m.title, true) : m.title}`);
+    console.log(
+      `${depth ? pad + "      " : ""}         ${arch}${hooked}${name}${global.mask ? maskText(m.title, true) : m.title}`,
+    );
+    for (const c of children.get(m.id) ?? []) row(c, depth + 1);
   };
 
   for (const m of sessions) {
-    if (m.isSubagent) continue; // rendered under its parent
-    row(m, false);
-    for (const c of children.get(m.id) ?? []) {
-      row(c, true);
-      seenChild.add(c.id);
-    }
-  }
-  // Subagents whose parent was filtered out / not present: show standalone.
-  for (const m of sessions) {
-    if (m.isSubagent && !seenChild.has(m.id)) row(m, true);
+    if (!m.parentId) row(m, 0);
+    // A child whose parent was filtered out / not present: show standalone.
+    else if (!present.has(m.parentId)) row(m, 1);
   }
   if (!sessions.length) console.log("no sessions found");
 }
@@ -175,6 +174,10 @@ async function cmdShow(id: string, opts: ShowOpts, global: GlobalOpts) {
   );
   if (sess.isSubagent) {
     console.log(color(`  ↳ subagent (${sess.agentName ?? "?"}) of ${sess.parentId}`, "violet"));
+  }
+  if (sess.parentInferred && sess.parentAgent) {
+    const parent = `${agentTag(sess.parentAgent)} ${sess.parentId}`;
+    console.log(color(`  ⇢ likely spawned by a hook in ${parent} (inferred from timing)`, "violet"));
   }
   console.log(
     color(`  ${tilde(sess.cwd)}  branch=${sess.gitBranch ?? "-"}  ${sess.model ?? ""}  v${sess.version ?? "?"}`, "dim"),
@@ -197,6 +200,13 @@ async function cmdShow(id: string, opts: ShowOpts, global: GlobalOpts) {
     const c = costForModel(e.usage, e.model, resolve);
     return color(`  [${tok.toLocaleString()} tok${c != null ? ` ≈$${c.toFixed(4)}` : " cost unknown"}]`, "green");
   };
+  // Children this row launched (subagent spawn / hook-started session).
+  const spawnedLine = (e: (typeof sess.events)[number]) => {
+    for (const c of e.spawnedSessions ?? []) {
+      const how = c.inferred ? "likely spawned (inferred)" : "spawned";
+      console.log(color(`           ↳ ${how} ${agentTag(c.agent)} ${c.id}`, "violet"));
+    }
+  };
   for (const e of sess.events) {
     if (opts.tools && e.kind !== "tool_use") continue;
     const ts = color(shortTs(e.ts), "gray");
@@ -209,6 +219,7 @@ async function cmdShow(id: string, opts: ShowOpts, global: GlobalOpts) {
         const snip = (doMask ? maskText(e.result.text, true) : e.result.text).replace(/\n/g, " ").slice(0, 140);
         console.log(`           ${tag} ${color(snip, "dim")}`);
       }
+      spawnedLine(e);
     } else if (e.kind === "text") {
       // Inside a sidechain, a "user" message is the parent agent, not the human.
       const who = isHumanMessage(e) ? "cyan" : e.sidechain && e.role === "user" ? "violet" : "rst";
@@ -222,6 +233,7 @@ async function cmdShow(id: string, opts: ShowOpts, global: GlobalOpts) {
       const plug = e.command ? plugin.forCommand(e.command) : undefined;
       const head = `${e.hookEvent ?? "hook"}${plug ? ` [${plug}]` : ""}${e.tool ? ` ${e.tool}` : ""}`;
       console.log(`${ts} ${sc}${color("🪝 " + head, "violet")}  ${color(e.text ?? "", "amber")}`);
+      spawnedLine(e);
     } else if (e.kind === "summary") {
       console.log(`${ts} ${color("— " + (e.text ?? ""), "gray")}`);
     } else if (e.kind === "system") {

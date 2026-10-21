@@ -231,6 +231,19 @@ mark {
 .ev.hook .role {
   color: var(--tool);
 }
+/* Parent -> child links on the row that spawned a session. */
+.spawned a {
+  display: inline-block;
+  margin: 2px 10px 0 0;
+  font-size: 12px;
+  color: var(--think);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.spawned a[title] {
+  text-decoration-style: dashed;
+}
+
 /* The plugin a hook belongs to (resolved from local install) + the tool that
    triggered a Pre/PostToolUse hook (resolved via toolUseID). */
 .hookplugin,

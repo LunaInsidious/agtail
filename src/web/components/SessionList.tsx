@@ -1,21 +1,62 @@
 import { memo, useEffect, useRef } from "react";
 import type { Agent, Session, SessionHit, SessionMeta } from "../lib/api.js";
 import { tag } from "../lib/filters.js";
-import { fmtTs, originLabel, PROGRAMMATIC_TIP, type Seed } from "../lib/util.js";
+import { fmtTs, INFERRED_PARENT_TIP, originLabel, PROGRAMMATIC_TIP, type Seed } from "../lib/util.js";
+
+/** Items nested under their parent (subagents, hook-launched sessions) to any
+ *  depth — a subagent's hook can launch a session too. A child whose parent isn't
+ *  listed shows flat at the top level, NOT indented: otherwise it would look
+ *  nested under the unrelated row above it. */
+function nestTree<T>(
+  items: T[],
+  idOf: (t: T) => string,
+  parentOf: (t: T) => string | undefined,
+): { item: T; depth: number }[] {
+  const present = new Set(items.map(idOf));
+  const nested = (t: T) => {
+    const p = parentOf(t);
+    return p !== undefined && present.has(p);
+  };
+  const childrenOf = new Map<string, T[]>();
+  for (const t of items) {
+    const p = parentOf(t);
+    if (p !== undefined && present.has(p)) childrenOf.set(p, [...(childrenOf.get(p) ?? []), t]);
+  }
+  const walk = (t: T, depth: number): { item: T; depth: number }[] => [
+    { item: t, depth },
+    ...(childrenOf.get(idOf(t)) ?? []).flatMap((c) => walk(c, depth + 1)),
+  ];
+  return items.filter((t) => !nested(t)).flatMap((t) => walk(t, 0));
+}
+
+/** Indent + branch marker for a nested row (↳ recorded, ⇢ inferred parent). */
+function Branch({ depth, inferred }: { depth: number; inferred?: boolean }) {
+  if (depth === 0) return null;
+  return inferred ? (
+    <span className="branch" title={INFERRED_PARENT_TIP}>
+      ⇢
+    </span>
+  ) : (
+    <span className="branch">↳</span>
+  );
+}
+// Nested rows indent one step per level beyond the first (which .child pads).
+const indent = (depth: number) => (depth > 1 ? { paddingLeft: 26 + (depth - 1) * 14 } : undefined);
 
 function SessionRow({
   s,
   cur,
   onOpen,
   scrollTarget,
-  child,
+  depth,
 }: {
   s: SessionMeta;
   cur: Session | null;
   onOpen: (a: Agent, id: string) => void;
   scrollTarget: React.MutableRefObject<string | null>;
-  child?: boolean;
+  depth: number;
 }) {
+  const child = depth > 0;
   const active = !!cur && cur.id === s.id;
   const ref = useRef<HTMLDivElement>(null);
   // Bring the selected row into view. Default "nearest" is a no-op if already
@@ -33,10 +74,11 @@ function SessionRow({
       className={
         "sess" + (child ? " child" : "") + (s.archived || s.programmatic ? " dim" : "") + (active ? " active" : "")
       }
+      style={indent(depth)}
       onClick={() => onOpen(s.agent, s.id)}
     >
       <div className="row1">
-        {child && <span className="branch">↳</span>}
+        <Branch depth={depth} inferred={s.parentInferred} />
         <span className={"src " + s.agent}>{tag(s.agent)}</span>
         {s.archived && (
           <span className="archmark" title="archived">
@@ -82,40 +124,18 @@ export const SessionList = memo(function SessionList({
   scrollTarget: React.MutableRefObject<string | null>;
 }) {
   if (!sessions.length) return <div className="empty">None</div>;
-  // Nest subagent sessions under the parent that spawned them.
-  const childrenOf = new Map<string, SessionMeta[]>();
-  for (const s of sessions) {
-    if (s.isSubagent && s.parentId) {
-      const arr = childrenOf.get(s.parentId) ?? [];
-      arr.push(s);
-      childrenOf.set(s.parentId, arr);
-    }
-  }
-  const present = new Set(sessions.map((s) => s.id));
   const props = { cur, onOpen, scrollTarget };
   return (
     <>
-      {sessions.map((s) => {
-        if (s.isSubagent) {
-          // Rendered as a child under its parent below; skip here when present.
-          if (s.parentId && present.has(s.parentId)) return null;
-          // Orphan (parent filtered out): show as a standalone top-level row, NOT
-          // with the child indent — otherwise it looks nested under the unrelated
-          // row above it (e.g. a Claude subagent appearing under a Codex session).
-          return <SessionRow key={s.path} s={s} {...props} />;
-        }
-        const kids = childrenOf.get(s.id) ?? [];
-        return (
-          // Key on the file path: unique per session file even if two rollouts
-          // ever resolve to the same id, so React never strands stale rows.
-          <div key={s.path}>
-            <SessionRow s={s} {...props} />
-            {kids.map((c) => (
-              <SessionRow key={c.path} s={c} child {...props} />
-            ))}
-          </div>
-        );
-      })}
+      {nestTree(
+        sessions,
+        (s) => s.id,
+        (s) => s.parentId,
+      ).map(({ item: s, depth }) => (
+        // Key on the file path: unique per session file even if two rollouts
+        // ever resolve to the same id, so React never strands stale rows.
+        <SessionRow key={s.path} s={s} depth={depth} {...props} />
+      ))}
     </>
   );
 });
@@ -127,7 +147,7 @@ function HitRow({
   onOpen,
   scrollTarget,
   showMatch,
-  child,
+  depth,
 }: {
   m: SessionHit;
   cur: Session | null;
@@ -135,8 +155,9 @@ function HitRow({
   onOpen: (a: Agent, id: string, seed?: Seed) => void;
   scrollTarget: React.MutableRefObject<string | null>;
   showMatch: boolean;
-  child?: boolean;
+  depth: number;
 }) {
+  const child = depth > 0;
   const active = !!cur && cur.id === m.sessionId;
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -152,10 +173,11 @@ function HitRow({
       className={
         "hit" + (child ? " child" : "") + (m.archived || m.programmatic ? " dim" : "") + (active ? " active" : "")
       }
+      style={indent(depth)}
       onClick={() => onOpen(m.agent, m.sessionId, seed)}
     >
       <div className="row1">
-        {child && <span className="branch">↳</span>}
+        <Branch depth={depth} inferred={m.parentInferred} />
         <span className={"src " + m.agent}>{tag(m.agent)}</span>
         {m.archived && (
           <span className="archmark" title="archived">
@@ -223,17 +245,9 @@ export const HitList = memo(function HitList({
       <div className="empty">No matches</div>
     );
   }
-  // Nest a matched subagent under its matched parent; a matched subagent whose
-  // parent isn't among the results shows standalone (flat). Same rule as the
-  // browse list — only nodes that actually matched appear.
-  const childrenOf = new Map<string, SessionHit[]>();
-  for (const m of hits)
-    if (m.isSubagent && m.parentId) {
-      const arr = childrenOf.get(m.parentId) ?? [];
-      arr.push(m);
-      childrenOf.set(m.parentId, arr);
-    }
-  const present = new Set(hits.map((m) => m.sessionId));
+  // Nest a matched child under its matched parent; one whose parent isn't among
+  // the results shows standalone (flat). Same rule as the browse list — only
+  // nodes that actually matched appear.
   const rowProps = { cur, seed, onOpen, scrollTarget, showMatch };
   return (
     <>
@@ -243,21 +257,13 @@ export const HitList = memo(function HitList({
           Showing the first {hits.length} sessions — raise “max results” or refine your search to see more.
         </div>
       )}
-      {hits.map((m) => {
-        if (m.isSubagent) {
-          if (m.parentId && present.has(m.parentId)) return null; // nested below
-          return <HitRow key={m.path} m={m} {...rowProps} />; // orphan match → flat
-        }
-        const kids = childrenOf.get(m.sessionId) ?? [];
-        return (
-          <div key={m.path}>
-            <HitRow m={m} {...rowProps} />
-            {kids.map((c) => (
-              <HitRow key={c.path} m={c} child {...rowProps} />
-            ))}
-          </div>
-        );
-      })}
+      {nestTree(
+        hits,
+        (m) => m.sessionId,
+        (m) => m.parentId,
+      ).map(({ item: m, depth }) => (
+        <HitRow key={m.path} m={m} depth={depth} {...rowProps} />
+      ))}
     </>
   );
 });

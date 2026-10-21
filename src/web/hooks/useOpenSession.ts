@@ -7,7 +7,7 @@ export type OpenFn = (agent: Agent, id: string, withSeed?: Seed) => Promise<void
 // Opening a session: serve instantly from an LRU cache when present (with
 // stale-while-revalidate for a live session that may have grown), otherwise
 // fetch. A sequence guard drops out-of-order resolutions so a slow earlier open
-// can't clobber a newer one. Also handles "open this session's parent".
+// can't clobber a newer one. Also handles "open a linked session" (parent/child).
 export function useOpenSession(
   mask: boolean,
   hits: SessionHit[] | null,
@@ -72,12 +72,12 @@ export function useOpenSession(
     [mask],
   );
 
-  // Opening a session's parent from the timeline header. If the parent is among
-  // the current search results, stay in results and just open (its row gets the
-  // active highlight). Otherwise clear the content search so the list drops back
-  // to the full browse tree, where the parent lives in context. Either way the
-  // parent row is scrolled to the top.
-  const openParent = useCallback(
+  // Opening a linked session from the timeline — the parent (header link) or a
+  // child a row spawned. If it is among the current search results, stay in
+  // results and just open (its row gets the active highlight). Otherwise clear
+  // the content search so the list drops back to the full browse tree, where it
+  // lives in context. Either way its row is scrolled to the top.
+  const openLinked = useCallback(
     (agent: Agent, id: string) => {
       const inResults = !!hits?.some((h) => h.sessionId === id);
       if (!inResults) setFilters((f) => ({ ...f, q: "", tools: [], since: "", until: "", kinds: [] }));
@@ -87,5 +87,5 @@ export function useOpenSession(
     [open, hits, setFilters],
   );
 
-  return { cur, setCur, seed, loading, open, openParent, scrollTargetRef };
+  return { cur, setCur, seed, loading, open, openLinked, scrollTargetRef };
 }

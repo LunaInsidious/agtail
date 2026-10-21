@@ -1,8 +1,9 @@
 import { memo, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { Event } from "../lib/api.js";
-import { isRecord, pretty } from "../lib/util.js";
+import type { Agent, Event } from "../lib/api.js";
+import { tag } from "../lib/filters.js";
+import { INFERRED_CHILD_TIP, isRecord, pretty } from "../lib/util.js";
 
 // Searchable text for one event (in-session find).
 export function eventText(e: Event): string {
@@ -54,7 +55,15 @@ function UsageBadge({ e }: { e: Event }) {
 }
 
 // eslint-disable-next-line sonarjs/cognitive-complexity -- event renderer: a switch over event kinds (text/tool/thinking/hook/system…).
-export const EventRow = memo(function EventRow({ e, highlight }: { e: Event; highlight?: string }) {
+export const EventRow = memo(function EventRow({
+  e,
+  highlight,
+  onOpenSession,
+}: {
+  e: Event;
+  highlight?: string;
+  onOpenSession: (agent: Agent, id: string) => void;
+}) {
   if (e.kind === "tool_use") {
     return (
       <div className="ev tool">
@@ -62,6 +71,7 @@ export const EventRow = memo(function EventRow({ e, highlight }: { e: Event; hig
         <div className="body">
           <UsageBadge e={e} />
           <ToolHead e={e} highlight={highlight} />
+          <SpawnedLinks e={e} onOpen={onOpenSession} />
         </div>
       </div>
     );
@@ -98,7 +108,7 @@ export const EventRow = memo(function EventRow({ e, highlight }: { e: Event; hig
       </div>
     );
   }
-  if (e.kind === "hook") return <HookRow e={e} highlight={highlight} />;
+  if (e.kind === "hook") return <HookRow e={e} highlight={highlight} onOpenSession={onOpenSession} />;
   if (e.kind === "unknown") {
     // Don't force-collapse: short raw shows inline, "Show all" only when long.
     return (
@@ -170,9 +180,32 @@ function ToolHead({ e, highlight }: { e: Event; highlight?: string }) {
   );
 }
 
+// Links to the sessions this event launched (parent -> child at the spawn point).
+function SpawnedLinks({ e, onOpen }: { e: Event; onOpen: (agent: Agent, id: string) => void }) {
+  if (!e.spawnedSessions?.length) return null;
+  return (
+    <div className="spawned">
+      {e.spawnedSessions.map((c) => (
+        <a key={c.id} onClick={() => onOpen(c.agent, c.id)} title={c.inferred ? INFERRED_CHILD_TIP : undefined}>
+          ↳ {c.inferred ? "likely spawned" : "spawned"} <span className={"src " + c.agent}>{tag(c.agent)}</span>{" "}
+          <code>{c.id.slice(0, 8)}</code>
+        </a>
+      ))}
+    </div>
+  );
+}
+
 // Hook firing: a collapsed command-only line by default; click to reveal the
 // full raw record. Mirrors the tool row's expand pattern (caret + detail).
-function HookRow({ e, highlight }: { e: Event; highlight?: string }) {
+function HookRow({
+  e,
+  highlight,
+  onOpenSession,
+}: {
+  e: Event;
+  highlight?: string;
+  onOpenSession: (agent: Agent, id: string) => void;
+}) {
   const rawStr = pretty(e.raw);
   const matchesDetail = !!highlight && rawStr.toLowerCase().includes(highlight.toLowerCase());
   const [open, setOpen] = useState(matchesDetail);
@@ -198,6 +231,7 @@ function HookRow({ e, highlight }: { e: Event; highlight?: string }) {
             <Highlighted text={e.text ?? ""} term={highlight} />
           </span>
         </div>
+        <SpawnedLinks e={e} onOpen={onOpenSession} />
         {open && (
           <div className="detail">
             <div className="seg">

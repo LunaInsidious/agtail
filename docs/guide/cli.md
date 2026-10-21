@@ -23,7 +23,7 @@ It searches message text, tool input (command, file_path, url, query, …), tool
 
 ## list
 
-List sessions, newest first. Source-tagged (claude / codex), with subagents nested under their parent.
+List sessions, newest first. Source-tagged (claude / codex), with subagents nested under their parent (`↳`) and hook-launched SDK sessions under the session whose hook launched them (`⇢`, inferred — see [Adapters](./adapters#hook-spawned-sessions-inferred-lineage)), to any depth.
 
 ```sh
 agtail list
@@ -41,7 +41,7 @@ agtail show <id>            # id can be a prefix
 agtail show <id> --tools    # tool calls only
 ```
 
-Each assistant turn is annotated with token / cost, like `[42,548 tok ≈$0.5851]` (see [Tokens & cost](./cost)). A subagent session shows a `↳ subagent (Explore) of <parentId>` header.
+Each assistant turn is annotated with token / cost, like `[42,548 tok ≈$0.5851]` (see [Tokens & cost](./cost)). A subagent session shows a `↳ subagent (Explore) of <parentId>` header; a hook-launched session shows `⇢ likely spawned by a hook in <parentId> (inferred from timing)`. A row that launched a session (a Codex `spawn_agent` call, or a hook) is followed by `↳ spawned <id>` (`likely spawned (inferred)` for a hook).
 
 ## stats
 
